@@ -52,6 +52,8 @@
 
 HIDDEN int abi_ver;
 
+static pthread_mutex_t dev_list_lock = PTHREAD_MUTEX_INITIALIZER;
+
 struct ibv_sysfs_dev {
 	char		        sysfs_name[IBV_SYSFS_NAME_MAX];
 	char		        ibdev_name[IBV_SYSFS_NAME_MAX];
@@ -362,6 +364,9 @@ static struct ibv_device *try_driver(struct ibv_driver *driver,
 		if (!vdev)
 			return NULL;
 
+		vdev->refcount = 1;
+		pthread_mutex_init(&vdev->reflock, NULL);
+
 		dev = &vdev->device;
 		dev->ops.alloc_context = NULL;
 		dev->ops.free_context = NULL;
@@ -479,18 +484,10 @@ static void add_device(struct ibv_device *dev,
 	(*dev_list)[(*num_devices)++] = dev;
 }
 
-HIDDEN int ibverbs_init(struct ibv_device ***list)
+HIDDEN int ibverbs_init()
 {
 	const char *sysfs_path;
-	struct ibv_sysfs_dev *sysfs_dev, *next_dev;
-	struct ibv_device *device;
-	int num_devices = 0;
-	int list_size = 0;
-	int statically_linked = 0;
-	int no_driver = 0;
 	int ret;
-
-	*list = NULL;
 
 	if (getenv("RDMAV_FORK_SAFE") || getenv("IBV_FORK_SAFE"))
 		if (ibv_fork_init())
@@ -509,9 +506,27 @@ HIDDEN int ibverbs_init(struct ibv_device ***list)
 
 	read_config();
 
+	return ret;
+}
+
+HIDDEN int ibverbs_get_device_list(struct ibv_device ***list)
+{
+	struct ibv_sysfs_dev *sysfs_dev, *next_dev;
+	struct ibv_device *device;
+	int num_devices = 0;
+	int list_size = 0;
+	int statically_linked = 0;
+	int no_driver = 0;
+	int ret;
+
+	*list = NULL;
+
+	pthread_mutex_lock(&dev_list_lock);
 	ret = find_sysfs_devs();
-	if (ret)
+	if (ret) {
+		pthread_mutex_unlock(&dev_list_lock);
 		return -ret;
+	}
 
 	for (sysfs_dev = sysfs_dev_list; sysfs_dev; sysfs_dev = sysfs_dev->next) {
 		device = try_drivers(sysfs_dev);
@@ -572,6 +587,8 @@ out:
 		}
 		free(sysfs_dev);
 	}
+	sysfs_dev_list = NULL;
 
+	pthread_mutex_unlock(&dev_list_lock);
 	return num_devices;
 }

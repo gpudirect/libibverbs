@@ -84,7 +84,8 @@ struct ibv_abi_compat_v2 {
 
 extern HIDDEN int abi_ver;
 
-HIDDEN int ibverbs_init(struct ibv_device ***list);
+HIDDEN int ibverbs_get_device_list(struct ibv_device ***list);
+HIDDEN int ibverbs_init();
 HIDDEN struct ibv_mr *__ibv_reg_shared_mr(struct ibv_exp_reg_shared_mr_in *in);
 HIDDEN struct ibv_mr *__ibv_exp_reg_mr(struct ibv_exp_reg_mr_in *in);
 HIDDEN struct ibv_qp *ibv_find_xrc_qp(uint32_t qpn);

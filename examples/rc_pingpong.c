@@ -57,6 +57,7 @@ enum {
 static int page_size;
 static int use_contiguous_mr;
 static int use_odp;
+static int use_upstream;
 static void *contig_addr;
 
 struct pingpong_context {
@@ -387,32 +388,54 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, unsigned 
 		ctx->mr = ibv_reg_mr(ctx->pd, ctx->buf, size,
 				     IBV_ACCESS_LOCAL_WRITE);
 	} else if (use_odp) {
-		struct ibv_exp_reg_mr_in in;
-		in.pd = ctx->pd;
-		in.addr = ctx->buf;
-		in.length = size;
-		in.exp_access = IBV_EXP_ACCESS_LOCAL_WRITE | IBV_EXP_ACCESS_ON_DEMAND;
-		in.comp_mask = 0;
-		dattr.comp_mask |= IBV_EXP_DEVICE_ATTR_ODP;
-		ret = ibv_exp_query_device(ctx->context, &dattr);
-		if (ret) {
-			printf(" Couldn't query device for on-demand\
-			       paging capabilities.\n");
-			goto clean_pd;
-		} else if (!(dattr.comp_mask & IBV_EXP_DEVICE_ATTR_ODP)) {
-			printf(" On-demand paging not supported by driver.\n");
-			goto clean_pd;
-		} else if (!(dattr.odp_caps.per_transport_caps.rc_odp_caps &
-			   IBV_EXP_ODP_SUPPORT_SEND)) {
-			printf(" Send is not supported for RC transport.\n");
-			goto clean_pd;
-		} else if (!(dattr.odp_caps.per_transport_caps.rc_odp_caps &
-			   IBV_EXP_ODP_SUPPORT_RECV)) {
-			printf(" Receive is not supported for RC transport.\n");
-			goto clean_pd;
-		}
+		if (use_upstream) {
+			int access_flags = IBV_ACCESS_LOCAL_WRITE;
+			const uint32_t rc_caps_mask = IBV_ODP_SUPPORT_SEND |
+					      IBV_ODP_SUPPORT_RECV;
+			struct ibv_device_attr_ex attrx;
 
-		ctx->mr = ibv_exp_reg_mr(&in);
+			if (ibv_query_device_ex(ctx->context, NULL, &attrx)) {
+				fprintf(stderr, "Couldn't query device for its features\n");
+				goto clean_pd;
+			}
+
+			if (!(attrx.odp_caps.general_caps & IBV_ODP_SUPPORT) ||
+			    (attrx.odp_caps.per_transport_caps.rc_odp_caps & rc_caps_mask) != rc_caps_mask) {
+				fprintf(stderr, "The device isn't ODP capable or does not support RC send and receive with ODP\n");
+				goto clean_pd;
+			}
+
+			access_flags |= IBV_ACCESS_ON_DEMAND;
+			ctx->mr = ibv_reg_mr(ctx->pd, ctx->buf, size, access_flags);
+		}
+		else {
+			struct ibv_exp_reg_mr_in in;
+			in.pd = ctx->pd;
+			in.addr = ctx->buf;
+			in.length = size;
+			in.exp_access = IBV_EXP_ACCESS_LOCAL_WRITE | IBV_EXP_ACCESS_ON_DEMAND;
+			in.comp_mask = 0;
+			dattr.comp_mask |= IBV_EXP_DEVICE_ATTR_ODP;
+			ret = ibv_exp_query_device(ctx->context, &dattr);
+			if (ret) {
+				printf(" Couldn't query device for on-demand\
+				       paging capabilities.\n");
+				goto clean_pd;
+			} else if (!(dattr.comp_mask & IBV_EXP_DEVICE_ATTR_ODP)) {
+				printf(" On-demand paging not supported by driver.\n");
+				goto clean_pd;
+			} else if (!(dattr.odp_caps.per_transport_caps.rc_odp_caps &
+				   IBV_EXP_ODP_SUPPORT_SEND)) {
+				printf(" Send is not supported for RC transport.\n");
+				goto clean_pd;
+			} else if (!(dattr.odp_caps.per_transport_caps.rc_odp_caps &
+				   IBV_EXP_ODP_SUPPORT_RECV)) {
+				printf(" Receive is not supported for RC transport.\n");
+				goto clean_pd;
+			}
+
+			ctx->mr = ibv_exp_reg_mr(&in);
+		}
 	} else {
 		struct ibv_exp_reg_mr_in in;
 
@@ -635,6 +658,7 @@ static void usage(const char *argv0)
 	printf("  -t, --inline-recv=<size>  size of inline-recv\n");
 	printf("  -a, --check-nop	    check NOP opcode\n");
 	printf("  -o, --odp		    use on demand paging\n");
+	printf("  -u, --upstream            use upstream API\n");
 	printf("  -z, --contig_addr         use specifix addr for contig pages MR, must use with -c flag\n");
 }
 
@@ -723,11 +747,12 @@ int main(int argc, char *argv[])
 			{ .name = "inline-recv",   .has_arg = 1, .val = 't' },
 			{ .name = "check-nop",	   .has_arg = 0, .val = 'a' },
 			{ .name = "odp",           .has_arg = 0, .val = 'o' },
+			{ .name = "upstream",      .has_arg = 0, .val = 'u' },
 			{ .name = "contig_addr",   .has_arg = 1, .val = 'z' },
 			{ 0 }
 		};
 
-		c = getopt_long(argc, argv, "p:d:i:s:m:r:n:l:ecg:t:aoz:",
+		c = getopt_long(argc, argv, "p:d:i:s:m:r:n:l:ecg:t:aouz:",
 				long_options, NULL);
 		if (c == -1)
 			break;
@@ -801,6 +826,9 @@ int main(int argc, char *argv[])
 			use_odp = 1;
 			break;
 
+		case 'u':
+			use_upstream = 1;
+			break;
 		case 'z':
 			contig_addr = (void *)(uintptr_t)strtol(optarg, NULL, 0);
 			break;

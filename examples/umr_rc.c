@@ -469,7 +469,7 @@ static int create_umr(struct umr_context *ctx, int num_mrs,
 	ctx->umr->length = umr_len;
 	ctx->umr->addr = (void *)(unsigned long)wr.ext_op.umr.base_addr;
 
-	return err;
+	goto clean_rpt_cnt;
 
 invalidate_umr:
 	wr.exp_opcode = IBV_EXP_WR_UMR_INVALIDATE;
@@ -510,7 +510,7 @@ static struct umr_context *pp_init_ctx(struct ibv_device *ib_dev, int size,
 {
 	struct umr_context *ctx;
 	struct ibv_exp_device_attr dattr;
-	int ret, i;
+	int ret, i, num_allocated_bufs = 0;
 
 	ctx = calloc(1, sizeof(*ctx));
 	if (!ctx)
@@ -523,13 +523,17 @@ static struct umr_context *pp_init_ctx(struct ibv_device *ib_dev, int size,
 	ctx->rx_depth = rx_depth;
 
 	ctx->buf = calloc(num_mrs, sizeof(void *));
+	if (!ctx->buf)
+		goto clean_ctx;
+
 	if (!use_contiguous_mr) {
 		for (i = 0; i < num_mrs; i++) {
 			ctx->buf[i] = memalign(page_size, size);
 			if (!ctx->buf) {
 				fprintf(stderr, "Couldn't allocate work buf.\n");
-				goto clean_ctx;
+				goto clean_buffer;
 			}
+			num_allocated_bufs++;
 		}
 	}
 
@@ -690,7 +694,10 @@ clean_device:
 
 clean_buffer:
 	if (!use_contiguous_mr)
-		free(ctx->buf);
+		for (i = 0; i < num_allocated_bufs; i++)
+			free(ctx->buf[i]);
+
+	free(ctx->buf);
 
 clean_ctx:
 	free(ctx);
@@ -738,12 +745,6 @@ int pp_close_ctx(struct umr_context *ctx)
 {
 	int i;
 
-	invalidate_umr(ctx);
-	if (ibv_dereg_mr(ctx->umr)) {
-		fprintf(stderr, "Couldn't deregister UMR\n");
-		return 1;
-	}
-
 	if (ctx->mkey_list_container) {
 		if (ibv_exp_dealloc_mkey_list_memory(ctx->mkey_list_container)) {
 			fprintf(stderr, "Couldn't dealloc mkey list memory\n");
@@ -766,6 +767,7 @@ int pp_close_ctx(struct umr_context *ctx)
 			fprintf(stderr, "Couldn't deregister MR\n");
 			return 1;
 		}
+	free(ctx->mr_arr);
 
 	if (ibv_dealloc_pd(ctx->pd)) {
 		fprintf(stderr, "Couldn't deallocate PD\n");
@@ -788,6 +790,7 @@ int pp_close_ctx(struct umr_context *ctx)
 		for (i = 0; i < ctx->num_mrs; i++)
 			free(ctx->buf[i]);
 
+	free(ctx->buf);
 	free(ctx);
 
 	return 0;
@@ -864,7 +867,7 @@ int main(int argc, char *argv[])
 	struct ibv_device	*ib_dev;
 	struct umr_context	*ctx;
 	struct umr_dest		my_dest;
-	struct umr_dest		*rem_dest;
+	struct umr_dest		*rem_dest = NULL;
 	struct timeval		start, end;
 	char			*ib_devname = NULL;
 	char			*servername = NULL;
@@ -885,11 +888,11 @@ int main(int argc, char *argv[])
 	int			umr_ninl_send = 0;
 	int			num_mrs = 3;
 	int			use_repeat_block = 0;
-	int 			rb_len = 50;
+	int			rb_len = 50;
 	int			rb_stride = 100;
 	int			rb_count = 30;
 	struct			ibv_exp_device_attr dattr;
-	int			ret;
+	int			ret = 0;
 
 	srand48(getpid() * time(NULL));
 
@@ -1033,7 +1036,7 @@ int main(int argc, char *argv[])
 		ib_dev = *dev_list;
 		if (!ib_dev) {
 			fprintf(stderr, "No IB devices found\n");
-			return 1;
+			goto err;
 		}
 	} else {
 		int i;
@@ -1043,37 +1046,36 @@ int main(int argc, char *argv[])
 		ib_dev = dev_list[i];
 		if (!ib_dev) {
 			fprintf(stderr, "IB device %s not found\n", ib_devname);
-			return 1;
+			goto err;
 		}
 	}
 
 	ctx = pp_init_ctx(ib_dev, size, rx_depth, ib_port, use_event, inlr_recv, num_mrs);
 	if (!ctx)
-		return 1;
+		goto err;
 
 	if (use_event)
 		if (ibv_req_notify_cq(ctx->cq, 0)) {
 			fprintf(stderr, "Couldn't request CQ notification\n");
-			return 1;
+			goto close_ctx;
 		}
-
 
 	if (pp_get_port_info(ctx->context, ib_port, &ctx->portinfo)) {
 		fprintf(stderr, "Couldn't get port info\n");
-		return 1;
+		goto close_ctx;
 	}
 
 	my_dest.lid = ctx->portinfo.lid;
 	if (ctx->portinfo.link_layer != IBV_LINK_LAYER_ETHERNET &&
 	    !my_dest.lid) {
 		fprintf(stderr, "Couldn't get local LID\n");
-		return 1;
+		goto close_ctx;
 	}
 
 	if (gidx >= 0) {
 		if (ibv_query_gid(ctx->context, ib_port, gidx, &my_dest.gid)) {
 			fprintf(stderr, "can't read sgid of index %d\n", gidx);
-			return 1;
+			goto close_ctx;
 		}
 	} else {
 		memset(&my_dest.gid, 0, sizeof(my_dest.gid));
@@ -1093,7 +1095,7 @@ int main(int argc, char *argv[])
 					       &my_dest, gidx);
 
 	if (!rem_dest)
-		return 1;
+		goto close_ctx;
 
 	inet_ntop(AF_INET6, &rem_dest->gid, gid, sizeof(gid));
 	printf("  remote address: LID 0x%04x, QPN 0x%06x, PSN 0x%06x, GID %s\n",
@@ -1102,26 +1104,26 @@ int main(int argc, char *argv[])
 	if (servername)
 		if (pp_connect_ctx(ctx, ib_port, my_dest.psn, mtu, sl, rem_dest,
 				   gidx))
-			return 1;
+			goto close_ctx;
 
 	memset(&dattr, 0, sizeof(dattr));
 	dattr.comp_mask |= IBV_EXP_DEVICE_ATTR_UMR;
 	ret = ibv_exp_query_device(ctx->context, &dattr);
 	if (ret) {
 		printf("  Couldn't query device for UMR capabilities.\n");
-		return 1;
+		goto close_ctx;
 	}
 
 	if (create_umr(ctx, num_mrs, use_repeat_block, umr_ninl_send, dattr.umr_caps.max_klm_list_size,
 		       size, rb_len, rb_stride, rb_count)) {
 		fprintf(stderr, "Failed to create umr\n");
-		return 1;
+		goto close_ctx;
 	}
 
 	routs = pp_post_recv(ctx, ctx->rx_depth);
 	if (routs < ctx->rx_depth) {
 		fprintf(stderr, "Couldn't post receive (%d)\n", routs);
-		return 1;
+		goto close_umr;
 	}
 
 	ctx->pending = UMR_RECV_WRID;
@@ -1129,14 +1131,14 @@ int main(int argc, char *argv[])
 	if (servername) {
 		if (pp_post_send(ctx)) {
 			fprintf(stderr, "Couldn't post send\n");
-			return 1;
+			goto close_umr;
 		}
 		ctx->pending |= UMR_SEND_WRID;
 	}
 
 	if (gettimeofday(&start, NULL)) {
 		perror("gettimeofday");
-		return 1;
+		goto close_umr;
 	}
 
 	rcnt = scnt = 0;
@@ -1147,19 +1149,19 @@ int main(int argc, char *argv[])
 
 			if (ibv_get_cq_event(ctx->channel, &ev_cq, &ev_ctx)) {
 				fprintf(stderr, "Failed to get cq_event\n");
-				return 1;
+				goto close_umr;
 			}
 
 			++num_cq_events;
 
 			if (ev_cq != ctx->cq) {
 				fprintf(stderr, "CQ event for unknown CQ %p\n", ev_cq);
-				return 1;
+				goto close_umr;
 			}
 
 			if (ibv_req_notify_cq(ctx->cq, 0)) {
 				fprintf(stderr, "Couldn't request CQ notification\n");
-				return 1;
+				goto close_umr;
 			}
 		}
 
@@ -1171,7 +1173,7 @@ int main(int argc, char *argv[])
 				ne = ibv_exp_poll_cq(ctx->cq, 2, wc, sizeof(wc[0]));
 				if (ne < 0) {
 					fprintf(stderr, "poll CQ failed %d\n", ne);
-					return 1;
+					goto close_umr;
 				}
 			} while (!use_event && ne < 1);
 
@@ -1180,7 +1182,7 @@ int main(int argc, char *argv[])
 					fprintf(stderr, "Failed status %s (%d) for wr_id %d\n",
 						ibv_wc_status_str(wc[i].status),
 						wc[i].status, (int) wc[i].wr_id);
-					return 1;
+					goto close_umr;
 				}
 
 				switch ((int) wc[i].wr_id) {
@@ -1195,7 +1197,7 @@ int main(int argc, char *argv[])
 							fprintf(stderr,
 								"Couldn't post receive (%d)\n",
 								routs);
-							return 1;
+							goto close_umr;
 						}
 					}
 
@@ -1205,14 +1207,14 @@ int main(int argc, char *argv[])
 				default:
 					fprintf(stderr, "Completion for unknown wr_id %d\n",
 						(int) wc[i].wr_id);
-					return 1;
+					goto close_umr;
 				}
 
 				ctx->pending &= ~(int) wc[i].wr_id;
 				if (scnt < iters && !ctx->pending) {
 					if (pp_post_send(ctx)) {
 						fprintf(stderr, "Couldn't post send\n");
-						return 1;
+						goto close_umr;
 					}
 					ctx->pending = UMR_RECV_WRID |
 						       UMR_SEND_WRID;
@@ -1223,7 +1225,7 @@ int main(int argc, char *argv[])
 
 	if (gettimeofday(&end, NULL)) {
 		perror("gettimeofday");
-		return 1;
+		goto close_umr;
 	}
 
 	{
@@ -1239,11 +1241,21 @@ int main(int argc, char *argv[])
 
 	ibv_ack_cq_events(ctx->cq, num_cq_events);
 
-	if (pp_close_ctx(ctx))
-		return 1;
+close_umr:
+	invalidate_umr(ctx);
+	if (ibv_dereg_mr(ctx->umr)) {
+		fprintf(stderr, "Couldn't deregister UMR\n");
+		goto err;
+	}
 
+close_ctx:
+	if (!(pp_close_ctx(ctx)))
+		goto out;
+err:
+	ret = 1;
+out:
 	ibv_free_device_list(dev_list);
-	free(rem_dest);
-
-	return 0;
+	if (rem_dest)
+		free(rem_dest);
+	return ret;
 }

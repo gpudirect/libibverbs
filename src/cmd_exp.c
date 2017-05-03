@@ -70,9 +70,9 @@ int ibv_exp_cmd_query_device(struct ibv_context *context,
 		return errno;
 
 	VALGRIND_MAKE_MEM_DEFINED(&resp, sizeof(resp));
-
-	ibv_cmd_query_device_assign((struct ibv_device_attr *)device_attr,
-				    raw_fw_ver, r_resp);
+	memset(device_attr->fw_ver, 0, sizeof(device_attr->fw_ver));
+	copy_query_dev_fields((struct ibv_device_attr *)device_attr, r_resp,
+				    raw_fw_ver);
 
 	if ((device_attr->comp_mask & IBV_EXP_DEVICE_ATTR_WITH_TIMESTAMP_MASK) &&
 	    (resp.comp_mask & IBV_EXP_DEVICE_ATTR_WITH_TIMESTAMP_MASK)) {
@@ -88,7 +88,7 @@ int ibv_exp_cmd_query_device(struct ibv_context *context,
 
 	if ((device_attr->comp_mask & IBV_EXP_DEVICE_ATTR_EXP_CAP_FLAGS) &&
 	    (resp.comp_mask & IBV_EXP_DEVICE_ATTR_EXP_CAP_FLAGS)) {
-		device_attr->exp_device_cap_flags = ((struct ibv_device_attr *)device_attr)->device_cap_flags;
+		device_attr->exp_device_cap_flags = (uint64_t)(((struct ibv_device_attr *)device_attr)->device_cap_flags);
 		device_attr->exp_device_cap_flags |= resp.device_cap_flags2 << IBV_EXP_START_FLAG_LOC;
 		comp_mask |= IBV_EXP_DEVICE_ATTR_EXP_CAP_FLAGS;
 	}
@@ -210,6 +210,10 @@ int ibv_exp_cmd_query_device(struct ibv_context *context,
 		device_attr->ec_caps.max_ec_data_vector_count =
 				resp.ec_caps.max_ec_data_vector_count;
 		comp_mask |= IBV_EXP_DEVICE_ATTR_EC_CAPS;
+		if (device_attr->comp_mask & IBV_EXP_DEVICE_ATTR_EC_GF_BASE) {
+			device_attr->ec_w_mask = resp.ec_w_mask;
+			comp_mask |= IBV_EXP_DEVICE_ATTR_EC_GF_BASE;
+		}
 	}
 
 	if ((device_attr->comp_mask & IBV_EXP_DEVICE_ATTR_MASKED_ATOMICS) &&
@@ -829,44 +833,6 @@ int ibv_cmd_exp_reg_mr(
 	return 0;
 }
 
-int ibv_exp_cmd_rereg_mr(struct ibv_mr *mr, uint32_t flags, void *addr,
-			 size_t length, uint64_t hca_va, int access,
-			 struct ibv_pd *pd, struct ibv_exp_rereg_mr_attr *attr,
-			 struct ibv_exp_rereg_mr *cmd,
-			 size_t lib_cmd_sz, size_t drv_cmd_sz,
-			 struct ibv_exp_rereg_mr_resp *resp,
-			 size_t lib_resp_sz, size_t drv_resp_sz)
-{
-	int wsize = lib_cmd_sz + drv_cmd_sz;
-
-	if (attr->comp_mask & ~(IBV_EXP_REREG_MR_ATTR_RESERVED - 1))
-		return -EINVAL;
-
-	IBV_INIT_CMD_RESP_EXP(REREG_MR, cmd, lib_cmd_sz, drv_cmd_sz, resp,
-			      lib_resp_sz, drv_resp_sz);
-
-	cmd->comp_mask	  = 0;
-	cmd->mr_handle	  = mr->handle;
-	cmd->flags	  = flags;
-	cmd->start	  = (uintptr_t) addr;
-	cmd->length	  = length;
-	cmd->hca_va	  = hca_va;
-	cmd->pd_handle	  = (flags & IBV_EXP_REREG_MR_CHANGE_PD) ? pd->handle : 0;
-	cmd->access_flags = access;
-
-	if (write(mr->context->cmd_fd, cmd, wsize) != wsize)
-		return errno;
-
-	VALGRIND_MAKE_MEM_DEFINED(resp, sizeof(*resp));
-
-	mr->lkey    = resp->lkey;
-	mr->rkey    = resp->rkey;
-	if (flags & IBV_EXP_REREG_MR_CHANGE_PD)
-		mr->context = pd->context;
-
-	return 0;
-}
-
 int ibv_cmd_exp_prefetch_mr(struct ibv_mr *mr,
 		struct ibv_exp_prefetch_attr *attr)
 {
@@ -911,43 +877,10 @@ int ibv_exp_cmd_create_wq(struct ibv_context *context,
 	cmd->user_handle = (uintptr_t)wq;
 	cmd->pd_handle = wq_init_attr->pd->handle;
 	cmd->cq_handle = wq_init_attr->cq->handle;
-	cmd->srq_handle = wq_init_attr->srq ? wq_init_attr->srq->handle : -1;
 	cmd->wq_type = wq_init_attr->wq_type;
 	cmd->max_recv_sge = wq_init_attr->max_recv_sge;
 	cmd->max_recv_wr = wq_init_attr->max_recv_wr;
-	cmd->reserved = 0;
 	cmd->comp_mask = 0;
-
-	if (wq_init_attr->comp_mask & IBV_EXP_CREATE_WQ_MP_RQ) {
-		if (cmd_core_size >= offsetof(struct ibv_exp_create_wq, mp_rq) +
-				     sizeof(struct ibv_exp_cmd_wq_mp_rq)) {
-			cmd->mp_rq.use_shift = wq_init_attr->mp_rq.use_shift;
-			cmd->mp_rq.single_stride_log_num_of_bytes = wq_init_attr->mp_rq.single_stride_log_num_of_bytes;
-			cmd->mp_rq.single_wqe_log_num_of_strides = wq_init_attr->mp_rq.single_wqe_log_num_of_strides;
-			cmd->mp_rq.reserved = 0;
-			cmd->comp_mask |= IBV_EXP_CMD_CREATE_WQ_MP_RQ;
-		} else {
-			/* Provider lib is not supporting Multi-Packet RQ */
-			return EINVAL;
-		}
-	}
-
-	if (wq_init_attr->comp_mask & IBV_EXP_CREATE_WQ_VLAN_OFFLOADS) {
-		if (cmd_core_size >= offsetof(struct ibv_exp_create_wq,
-					      wq_vlan_offloads) + sizeof(__u16)) {
-			cmd->wq_vlan_offloads = wq_init_attr->vlan_offloads;
-			cmd->comp_mask |= IBV_EXP_CMD_CREATE_WQ_VLAN_OFFLOADS;
-		}
-	}
-
-	if (wq_init_attr->comp_mask & IBV_EXP_CREATE_WQ_FLAGS) {
-		if ((wq_init_attr->flags >= IBV_EXP_CREATE_WQ_FLAG_RESERVED) ||
-		    (cmd_core_size < offsetof(struct ibv_exp_create_wq, flags) + sizeof(__u64))) {
-			return EINVAL;
-		}
-		cmd->flags = wq_init_attr->flags;
-		cmd->comp_mask |= IBV_EXP_CMD_CREATE_WQ_FLAGS;
-	}
 
 	err = write(context->cmd_fd, cmd, cmd_size);
 	if (err != cmd_size)
@@ -979,9 +912,10 @@ int ibv_exp_cmd_modify_wq(struct ibv_exp_wq *wq, struct ibv_exp_wq_attr *attr,
 	cmd->curr_wq_state = attr->curr_wq_state;
 	cmd->wq_state = attr->wq_state;
 	cmd->wq_handle = wq->handle;
-	if (attr->attr_mask & IBV_EXP_CREATE_WQ_VLAN_OFFLOADS)
-		cmd->wq_vlan_offloads = attr->vlan_offloads;
-	cmd->comp_mask = attr->attr_mask;
+	/* Turn off IBV_EXP_CREATE_WQ_VLAN_OFFLOADS since it will be passed
+	 * in the vendor data part.
+	 */
+	cmd->comp_mask = attr->attr_mask & (~IBV_EXP_CREATE_WQ_VLAN_OFFLOADS);
 
 	if (write(wq->context->cmd_fd, cmd, cmd_size) != cmd_size)
 		return errno;
@@ -995,10 +929,12 @@ int ibv_exp_cmd_modify_wq(struct ibv_exp_wq *wq, struct ibv_exp_wq_attr *attr,
 int ibv_exp_cmd_destroy_wq(struct ibv_exp_wq *wq)
 {
 	struct ib_exp_destroy_wq cmd;
+	struct ibv_destroy_wq_resp resp;
 	int ret = 0;
 
 	memset(&cmd, 0, sizeof(cmd));
-	IBV_INIT_CMD_EX(&cmd, sizeof(cmd), EXP_DESTROY_WQ);
+	memset(&resp, 0, sizeof(resp));
+	IBV_INIT_CMD_RESP_EX(&cmd, sizeof(cmd), EXP_DESTROY_WQ, &resp, sizeof(resp));
 	cmd.wq_handle = wq->handle;
 
 	if (write(wq->context->cmd_fd, &cmd, sizeof(cmd)) != sizeof(cmd))
@@ -1040,9 +976,7 @@ int ibv_exp_cmd_create_rwq_ind_table(struct ibv_context *context,
 			       EXP_CREATE_RWQ_IND_TBL, resp,
 			       resp_core_size, resp_size);
 
-	cmd->pd_handle = init_attr->pd->handle;
 	cmd->log_ind_tbl_size = init_attr->log_ind_tbl_size;
-	cmd->reserved = 0;
 	cmd->comp_mask = 0;
 
 	err = write(context->cmd_fd, cmd, cmd_size);

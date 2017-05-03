@@ -1,6 +1,6 @@
 .\" -*- nroff -*-
 .\"
-.TH IBV_ALLOC_MW 3 20012-06-20 libibverbs "Libibverbs Programmer's Manual"
+.TH IBV_ALLOC_MW 3 2016-02-02 libibverbs "Libibverbs Programmer's Manual"
 .SH "NAME"
 ibv_alloc_mw, ibv_dealloc_mw \- allocate or deallocate a memory window (MW)
 .SH "SYNOPSIS"
@@ -14,19 +14,22 @@ ibv_alloc_mw, ibv_dealloc_mw \- allocate or deallocate a memory window (MW)
 .fi
 .SH "DESCRIPTION"
 .B ibv_alloc_mw()
-allocates a memory region (MW) associated with the protection domain
+allocates a memory window (MW) associated with the protection domain
 .I pd\fR.
 The MW's type (1 or 2A/2B) is
 .I type\fR.
 .PP
-The MW is created not unbounded. For it to be useful, the MW must be bounded, through either ibv_bind_mw (type 1) or a special WQE (type 2). Once bounded, the memory window allows RDMA (remote) access to a subset of the MR to which it was bounded, until invalidated/unbounded/deallocated.
+The MW is created not bound. For it to be useful, the MW must be bound, through either ibv_bind_mw (type 1) or a special WR (type 2).
+Once bound, the memory window allows RDMA (remote) access to a subset of the MR to which it was bound,
+until invalidated by: ibv_bind_mw verb with zero length for type 1,
+IBV_WR_LOCAL_INV/IBV_WR_SEND_WITH_INV WR opcode for type 2, deallocation.
 .PP
 .B ibv_dealloc_mw()
-Unbinds and deallocates the MW
+Unbinds in case was previously bound and deallocates the MW
 .I mw\fR.
 .SH "RETURN VALUE"
 .B ibv_alloc_mw()
-returns a pointer to the registered MW, or NULL if the request fails.
+returns a pointer to the allocated MW, or NULL if the request fails.
 The remote key (\fBR_Key\fR)
 field
 .B rkey
@@ -46,8 +49,6 @@ fails if any memory window is still bound to this MR.
 .BR ibv_reg_mr (3),
 .SH "AUTHORS"
 .TP
-Haggai Eran <haggaie@mellanox.com>
+Majd Dibbiny <majd@mellanox.com>
 .TP
-Shachar Raindel <raindel@mellanox.com>
-.TP
-Yaniv Saar <ysaar@mellanox.com>
+Yishai Hadas <yishaih@mellanox.com>

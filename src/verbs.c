@@ -313,6 +313,68 @@ struct ibv_mr *__ibv_reg_mr(struct ibv_pd *pd, void *addr,
 }
 default_symver(__ibv_reg_mr, ibv_reg_mr);
 
+int __ibv_rereg_mr(struct ibv_mr *mr, int flags,
+		   struct ibv_pd *pd, void *addr,
+		   size_t length, int access)
+{
+	int dofork_onfail = 0;
+	int err;
+	void *old_addr;
+	size_t old_len;
+
+	if (flags & ~IBV_REREG_MR_FLAGS_SUPPORTED) {
+		errno = EINVAL;
+		return IBV_REREG_MR_ERR_INPUT;
+	}
+
+	if ((flags & IBV_REREG_MR_CHANGE_TRANSLATION) &&
+	    (!length || !addr)) {
+		errno = EINVAL;
+		return IBV_REREG_MR_ERR_INPUT;
+	}
+
+	if (access && !(flags & IBV_REREG_MR_CHANGE_ACCESS)) {
+		errno = EINVAL;
+		return IBV_REREG_MR_ERR_INPUT;
+	}
+
+	if (!mr->context->ops.rereg_mr) {
+		errno = ENOSYS;
+		return IBV_REREG_MR_ERR_INPUT;
+	}
+
+	if (flags & IBV_REREG_MR_CHANGE_TRANSLATION) {
+		err = ibv_dontfork_range(addr, length);
+		if (err)
+			return IBV_REREG_MR_ERR_DONT_FORK_NEW;
+		dofork_onfail = 1;
+	}
+
+	old_addr = mr->addr;
+	old_len = mr->length;
+	err = mr->context->ops.rereg_mr(mr, flags, pd, addr, length, access);
+	if (!err) {
+		if (flags & IBV_REREG_MR_CHANGE_PD)
+			mr->pd = pd;
+		if (flags & IBV_REREG_MR_CHANGE_TRANSLATION) {
+			mr->addr    = addr;
+			mr->length  = length;
+			err = ibv_dofork_range(old_addr, old_len);
+			if (err)
+				return IBV_REREG_MR_ERR_DO_FORK_OLD;
+		}
+	} else {
+		err = IBV_REREG_MR_ERR_CMD;
+		if (dofork_onfail) {
+			if (ibv_dofork_range(addr, length))
+				err = IBV_REREG_MR_ERR_CMD_AND_DO_FORK_NEW;
+		}
+	}
+
+	return err;
+}
+default_symver(__ibv_rereg_mr, ibv_rereg_mr);
+
 int __ibv_dereg_mr(struct ibv_mr *mr)
 {
 	int ret;
@@ -642,14 +704,12 @@ static inline int create_peer_from_gid(int family, void *raw_gid,
 	return 0;
 }
 
-#define ETHERNET_LL_SIZE 6
 #define NEIGH_GET_DEFAULT_TIMEOUT_MS 3000
-struct ibv_ah *__ibv_create_ah(struct ibv_pd *pd, struct ibv_ah_attr *attr)
+static struct ibv_ah *__ibv_create_ah_nl(struct ibv_pd *pd, struct ibv_ah_attr *attr)
 {
 	struct ibv_ah *ah = NULL;
 #ifndef NRESOLVE_NEIGH
 	int err;
-	struct ibv_exp_port_attr port_attr;
 	int dst_family;
 	int src_family;
 	int oif;
@@ -666,26 +726,7 @@ struct ibv_ah *__ibv_create_ah(struct ibv_pd *pd, struct ibv_ah_attr *attr)
 #endif
 		ah = pd->context->ops.create_ah(pd, attr);
 #ifndef NRESOLVE_NEIGH
-		goto return_ah;
-	}
-
-	port_attr.comp_mask = IBV_EXP_QUERY_PORT_ATTR_MASK1;
-	port_attr.mask1 = IBV_EXP_QUERY_PORT_LINK_LAYER;
-	err = ibv_exp_query_port(pd->context, attr->port_num, &port_attr);
-
-	if (err) {
-		fprintf(stderr, PFX "ibv_create_ah failed to query port.\n");
-		return NULL;
-	}
-
-	if ((IBV_LINK_LAYER_ETHERNET == port_attr.link_layer) &&
-            !attr->is_global) {
-		fprintf(stderr, PFX "GRH is mandatory For RoCE address handle\n");
-		return NULL;
-	}
-	if (IBV_LINK_LAYER_ETHERNET != port_attr.link_layer) {
-		ah = pd->context->ops.create_ah(pd, attr);
-		goto return_ah;
+		return ah;
 	}
 
 	memset(&attr_ex, 0, sizeof(attr_ex));
@@ -767,14 +808,52 @@ struct ibv_ah *__ibv_create_ah(struct ibv_pd *pd, struct ibv_ah_attr *attr)
 	attr_ex.ll_address.type = LL_ADDRESS_ETH;
 	attr_ex.ll_address.address = ethernet_ll;
 
-
 	ah = vctx->drv_exp_ibv_create_ah(pd, &attr_ex);
 
 free_resources:
 	neigh_free_resources(&neigh_handler);
 
-return_ah:
 #endif
+	return ah;
+}
+
+struct ibv_ah *__ibv_create_ah(struct ibv_pd *pd, struct ibv_ah_attr *attr)
+{
+	struct ibv_exp_port_attr port_attr;
+	struct ibv_exp_ah_attr attr_ex = {};
+	struct ibv_ah *ah;
+	int err;
+	struct verbs_context_exp *vctx = verbs_get_exp_ctx_op(pd->context,
+							      drv_exp_ibv_create_kah);
+
+	port_attr.comp_mask = IBV_EXP_QUERY_PORT_ATTR_MASK1;
+	port_attr.mask1 = IBV_EXP_QUERY_PORT_LINK_LAYER;
+	err = ibv_exp_query_port(pd->context, attr->port_num, &port_attr);
+
+	if (err) {
+		fprintf(stderr, PFX "ibv_create_ah failed to query port.\n");
+		return NULL;
+	}
+
+	if ((port_attr.link_layer == IBV_LINK_LAYER_ETHERNET) &&
+	    !attr->is_global) {
+		fprintf(stderr, PFX "GRH is mandatory For RoCE address handle\n");
+		return NULL;
+	}
+
+	if (port_attr.link_layer != IBV_LINK_LAYER_ETHERNET) {
+		ah = pd->context->ops.create_ah(pd, attr);
+	} else {
+		if (!vctx) {
+			ah = __ibv_create_ah_nl(pd, attr);
+		} else {
+			memcpy(&attr_ex, attr, sizeof(*attr));
+			ah = vctx->drv_exp_ibv_create_kah(pd, &attr_ex);
+			if (!ah)
+				ah = __ibv_create_ah_nl(pd, attr);
+		}
+	}
+
 	if (ah) {
 		ah->context = pd->context;
 		ah->pd      = pd;

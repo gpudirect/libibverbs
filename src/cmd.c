@@ -70,54 +70,51 @@ int ibv_cmd_get_context(struct ibv_context *context, struct ibv_get_context *cmd
 	return 0;
 }
 
-void ibv_cmd_query_device_assign(struct ibv_device_attr *device_attr,
-				 uint64_t *raw_fw_ver,
-				 struct ibv_query_device_resp *resp)
+void copy_query_dev_fields(struct ibv_device_attr *device_attr,
+				  struct ibv_query_device_resp *resp,
+				  uint64_t *raw_fw_ver)
 {
-	memset(device_attr->fw_ver, 0, sizeof(device_attr->fw_ver));
-	*raw_fw_ver			       = resp->fw_ver;
-	device_attr->node_guid		       = resp->node_guid;
-	device_attr->sys_image_guid	       = resp->sys_image_guid;
-	device_attr->max_mr_size	       = resp->max_mr_size;
-	device_attr->page_size_cap	       = resp->page_size_cap;
-	device_attr->vendor_id		       = resp->vendor_id;
-	device_attr->vendor_part_id	       = resp->vendor_part_id;
-	device_attr->hw_ver		       = resp->hw_ver;
-	device_attr->max_qp		       = resp->max_qp;
-	device_attr->max_qp_wr		       = resp->max_qp_wr;
-	device_attr->device_cap_flags	       = resp->device_cap_flags;
-	device_attr->max_sge		       = resp->max_sge;
-	device_attr->max_sge_rd		       = resp->max_sge_rd;
-	device_attr->max_cq		       = resp->max_cq;
-	device_attr->max_cqe		       = resp->max_cqe;
-	device_attr->max_mr		       = resp->max_mr;
-	device_attr->max_pd		       = resp->max_pd;
-	device_attr->max_qp_rd_atom	       = resp->max_qp_rd_atom;
-	device_attr->max_ee_rd_atom	       = resp->max_ee_rd_atom;
-	device_attr->max_res_rd_atom	       = resp->max_res_rd_atom;
-	device_attr->max_qp_init_rd_atom       = resp->max_qp_init_rd_atom;
-	device_attr->max_ee_init_rd_atom       = resp->max_ee_init_rd_atom;
-	device_attr->atomic_cap		       = resp->atomic_cap;
-	device_attr->max_ee		       = resp->max_ee;
-	device_attr->max_rdd		       = resp->max_rdd;
-	device_attr->max_mw		       = resp->max_mw;
-	device_attr->max_raw_ipv6_qp	       = resp->max_raw_ipv6_qp;
-	device_attr->max_raw_ethy_qp	       = resp->max_raw_ethy_qp;
-	device_attr->max_mcast_grp	       = resp->max_mcast_grp;
-	device_attr->max_mcast_qp_attach       = resp->max_mcast_qp_attach;
-	device_attr->max_total_mcast_qp_attach =
-		resp->max_total_mcast_qp_attach;
-	device_attr->max_ah		       = resp->max_ah;
-	device_attr->max_fmr		       = resp->max_fmr;
-	device_attr->max_map_per_fmr	       = resp->max_map_per_fmr;
-	device_attr->max_srq		       = resp->max_srq;
-	device_attr->max_srq_wr		       = resp->max_srq_wr;
-	device_attr->max_srq_sge	       = resp->max_srq_sge;
-	device_attr->max_pkeys		       = resp->max_pkeys;
-	device_attr->local_ca_ack_delay        = resp->local_ca_ack_delay;
-	device_attr->phys_port_cnt	       = resp->phys_port_cnt;
+	*raw_fw_ver				= resp->fw_ver;
+	device_attr->node_guid			= resp->node_guid;
+	device_attr->sys_image_guid		= resp->sys_image_guid;
+	device_attr->max_mr_size		= resp->max_mr_size;
+	device_attr->page_size_cap		= resp->page_size_cap;
+	device_attr->vendor_id			= resp->vendor_id;
+	device_attr->vendor_part_id		= resp->vendor_part_id;
+	device_attr->hw_ver			= resp->hw_ver;
+	device_attr->max_qp			= resp->max_qp;
+	device_attr->max_qp_wr			= resp->max_qp_wr;
+	device_attr->device_cap_flags		= resp->device_cap_flags;
+	device_attr->max_sge			= resp->max_sge;
+	device_attr->max_sge_rd			= resp->max_sge_rd;
+	device_attr->max_cq			= resp->max_cq;
+	device_attr->max_cqe			= resp->max_cqe;
+	device_attr->max_mr			= resp->max_mr;
+	device_attr->max_pd			= resp->max_pd;
+	device_attr->max_qp_rd_atom		= resp->max_qp_rd_atom;
+	device_attr->max_ee_rd_atom		= resp->max_ee_rd_atom;
+	device_attr->max_res_rd_atom		= resp->max_res_rd_atom;
+	device_attr->max_qp_init_rd_atom	= resp->max_qp_init_rd_atom;
+	device_attr->max_ee_init_rd_atom	= resp->max_ee_init_rd_atom;
+	device_attr->atomic_cap			= resp->atomic_cap;
+	device_attr->max_ee			= resp->max_ee;
+	device_attr->max_rdd			= resp->max_rdd;
+	device_attr->max_mw			= resp->max_mw;
+	device_attr->max_raw_ipv6_qp		= resp->max_raw_ipv6_qp;
+	device_attr->max_raw_ethy_qp		= resp->max_raw_ethy_qp;
+	device_attr->max_mcast_grp		= resp->max_mcast_grp;
+	device_attr->max_mcast_qp_attach	= resp->max_mcast_qp_attach;
+	device_attr->max_total_mcast_qp_attach	= resp->max_total_mcast_qp_attach;
+	device_attr->max_ah			= resp->max_ah;
+	device_attr->max_fmr			= resp->max_fmr;
+	device_attr->max_map_per_fmr		= resp->max_map_per_fmr;
+	device_attr->max_srq			= resp->max_srq;
+	device_attr->max_srq_wr			= resp->max_srq_wr;
+	device_attr->max_srq_sge		= resp->max_srq_sge;
+	device_attr->max_pkeys			= resp->max_pkeys;
+	device_attr->local_ca_ack_delay		= resp->local_ca_ack_delay;
+	device_attr->phys_port_cnt		= resp->phys_port_cnt;
 }
-
 
 int ibv_cmd_query_device(struct ibv_context *context,
 			 struct ibv_device_attr *device_attr,
@@ -132,8 +129,8 @@ int ibv_cmd_query_device(struct ibv_context *context,
 		return errno;
 
 	VALGRIND_MAKE_MEM_DEFINED(&resp, sizeof resp);
-
-	ibv_cmd_query_device_assign(device_attr, raw_fw_ver, &resp);
+	memset(device_attr->fw_ver, 0, sizeof(device_attr->fw_ver));
+	copy_query_dev_fields(device_attr, &resp, raw_fw_ver);
 	return 0;
 }
 
@@ -280,6 +277,35 @@ int ibv_cmd_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
 	return 0;
 }
 
+int ibv_cmd_rereg_mr(struct ibv_mr *mr, uint32_t flags, void *addr,
+		     size_t length, uint64_t hca_va, int access,
+		     struct ibv_pd *pd, struct ibv_rereg_mr *cmd,
+		     size_t cmd_sz, struct ibv_rereg_mr_resp *resp,
+		     size_t resp_sz)
+{
+	IBV_INIT_CMD_RESP(cmd, cmd_sz, REREG_MR, resp, resp_sz);
+
+	cmd->mr_handle	  = mr->handle;
+	cmd->flags	  = flags;
+	cmd->start	  = (uintptr_t)addr;
+	cmd->length	  = length;
+	cmd->hca_va	  = hca_va;
+	cmd->pd_handle	  = (flags & IBV_REREG_MR_CHANGE_PD) ? pd->handle : 0;
+	cmd->access_flags = access;
+
+	if (write(mr->context->cmd_fd, cmd, cmd_sz) != cmd_sz)
+		return errno;
+
+	VALGRIND_MAKE_MEM_DEFINED(resp, resp_sz);
+
+	mr->lkey    = resp->lkey;
+	mr->rkey    = resp->rkey;
+	if (flags & IBV_REREG_MR_CHANGE_PD)
+		mr->context = pd->context;
+
+	return 0;
+}
+
 int ibv_cmd_dereg_mr(struct ibv_mr *mr)
 {
 	struct ibv_dereg_mr cmd;
@@ -294,35 +320,37 @@ int ibv_cmd_dereg_mr(struct ibv_mr *mr)
 }
 
 int ibv_cmd_alloc_mw(struct ibv_pd *pd, enum ibv_mw_type type,
-		     struct verbs_mw *mw, struct ibv_alloc_mw *cmd,
+		     struct ibv_mw *mw, struct ibv_alloc_mw *cmd,
 		     size_t cmd_size,
 		     struct ibv_alloc_mw_resp *resp, size_t resp_size)
 {
 	IBV_INIT_CMD_RESP(cmd, cmd_size, ALLOC_MW, resp, resp_size);
 	cmd->pd_handle	= pd->handle;
 	cmd->mw_type	= type;
+	memset(cmd->reserved, 0, sizeof(cmd->reserved));
 
 	if (write(pd->context->cmd_fd, cmd, cmd_size) != cmd_size)
 		return errno;
 
 	VALGRIND_MAKE_MEM_DEFINED(resp, resp_size);
 
-	mw->mw.context = pd->context;
-	mw->mw.pd      = pd;
-	mw->mw.rkey    = resp->rkey;
+	mw->context = pd->context;
+	mw->pd      = pd;
+	mw->rkey    = resp->rkey;
 	mw->handle  = resp->mw_handle;
 	mw->type    = type;
 
 	return 0;
 }
 
-int ibv_cmd_dealloc_mw(struct verbs_mw *mw,
+int ibv_cmd_dealloc_mw(struct ibv_mw *mw,
 		       struct ibv_dealloc_mw *cmd, size_t cmd_size)
 {
 	IBV_INIT_CMD(cmd, cmd_size, DEALLOC_MW);
 	cmd->mw_handle = mw->handle;
+	cmd->reserved = 0;
 
-	if (write(mw->mw.context->cmd_fd, cmd, cmd_size) != cmd_size)
+	if (write(mw->context->cmd_fd, cmd, cmd_size) != cmd_size)
 		return errno;
 
 	return 0;
@@ -1132,12 +1160,13 @@ int ibv_cmd_post_srq_recv(struct ibv_srq *srq, struct ibv_recv_wr *wr,
 }
 
 int ibv_cmd_create_ah(struct ibv_pd *pd, struct ibv_ah *ah,
-		      struct ibv_ah_attr *attr)
+		      struct ibv_ah_attr *attr,
+		      struct ibv_create_ah_resp *resp,
+		      size_t resp_size)
 {
 	struct ibv_create_ah      cmd;
-	struct ibv_create_ah_resp resp;
 
-	IBV_INIT_CMD_RESP(&cmd, sizeof cmd, CREATE_AH, &resp, sizeof resp);
+	IBV_INIT_CMD_RESP(&cmd, sizeof cmd, CREATE_AH, resp, resp_size);
 	cmd.user_handle            = (uintptr_t) ah;
 	cmd.pd_handle              = pd->handle;
 	cmd.attr.dlid              = attr->dlid;
@@ -1156,9 +1185,9 @@ int ibv_cmd_create_ah(struct ibv_pd *pd, struct ibv_ah *ah,
 	if (write(pd->context->cmd_fd, &cmd, sizeof cmd) != sizeof cmd)
 		return errno;
 
-	VALGRIND_MAKE_MEM_DEFINED(&resp, sizeof resp);
+	VALGRIND_MAKE_MEM_DEFINED(resp, resp_size);
 
-	ah->handle  = resp.handle;
+	ah->handle  = resp->handle;
 	ah->context = pd->context;
 
 	return 0;
@@ -1349,7 +1378,9 @@ static int ib_spec_to_kern_spec(struct ibv_exp_flow_spec *ib_spec,
 		if (ret)
 			return ret;
 
-		kern_spec->hdr.type = IBV_EXP_FLOW_SPEC_IPV6;
+		kern_spec->hdr.type = ib_spec->hdr.type & IBV_EXP_FLOW_SPEC_INNER ?
+			IBV_EXP_FLOW_SPEC_IPV6 | IBV_EXP_FLOW_SPEC_INNER :
+			IBV_EXP_FLOW_SPEC_IPV6;
 		kern_spec->ipv6_ext.size = sizeof(struct ibv_exp_kern_spec_ipv6_ext);
 		memcpy(&kern_spec->ipv6_ext.val, &ib_spec->ipv6_ext.val,
 		       kern_filter_size);
@@ -1366,7 +1397,9 @@ static int ib_spec_to_kern_spec(struct ibv_exp_flow_spec *ib_spec,
 		if (ret)
 			return ret;
 
-		kern_spec->hdr.type = IBV_EXP_FLOW_SPEC_IPV4;
+		kern_spec->hdr.type = ib_spec->hdr.type & IBV_EXP_FLOW_SPEC_INNER ?
+			IBV_EXP_FLOW_SPEC_IPV4 | IBV_EXP_FLOW_SPEC_INNER :
+			IBV_EXP_FLOW_SPEC_IPV4;
 		kern_spec->ipv4_ext.size = sizeof(struct
 						  ibv_exp_kern_spec_ipv4_ext);
 		memcpy(&kern_spec->ipv4_ext.val, &ib_spec->ipv4_ext.val,
@@ -1452,8 +1485,8 @@ static struct ibv_flow *cmd_create_flow(struct ibv_qp *qp,
 	int exp_flow = flow_is_exp(flow_attr);
 	size_t spec_size;
 
-	spec_size = exp_flow ? sizeof(struct ibv_kern_spec) :
-				sizeof(struct ibv_exp_kern_spec);
+	spec_size = exp_flow ? sizeof(struct ibv_exp_kern_spec) :
+		sizeof(struct ibv_kern_spec);
 
 	cmd_size = sizeof(*cmd) + (flow_attr->num_of_specs * spec_size);
 
@@ -1565,4 +1598,65 @@ int ibv_cmd_destroy_flow(struct ibv_flow *flow_id)
 	free(flow_id);
 
 	return ret;
+}
+
+int ibv_cmd_query_device_ex(struct ibv_context *context,
+			    const struct ibv_query_device_ex_input *input,
+			    struct ibv_device_attr_ex *attr, size_t attr_size,
+			    uint64_t *raw_fw_ver,
+			    struct ibv_query_device_ex *cmd,
+			    size_t cmd_core_size,
+			    size_t cmd_size,
+			    struct ibv_query_device_resp_ex *resp,
+			    size_t resp_core_size,
+			    size_t resp_size)
+{
+	int err;
+
+	if (input && input->comp_mask)
+		return EINVAL;
+
+	if (attr_size < offsetof(struct ibv_device_attr_ex, comp_mask) +
+			sizeof(attr->comp_mask))
+		return EINVAL;
+
+	if (resp_core_size < offsetof(struct ibv_query_device_resp_ex,
+				      response_length) +
+			     sizeof(resp->response_length))
+		return EINVAL;
+
+	IBV_INIT_CMD_RESP_EX_V(cmd, cmd_core_size, cmd_size,
+			       QUERY_DEVICE_EX, resp, resp_core_size,
+			       resp_size);
+	cmd->comp_mask = 0;
+	cmd->reserved = 0;
+	memset(attr->orig_attr.fw_ver, 0, sizeof(attr->orig_attr.fw_ver));
+	memset(&attr->comp_mask, 0, attr_size - sizeof(attr->orig_attr));
+	err = write(context->cmd_fd, cmd, cmd_size);
+	if (err != cmd_size)
+		return errno;
+
+	VALGRIND_MAKE_MEM_DEFINED(resp, resp_size);
+	copy_query_dev_fields(&attr->orig_attr, &resp->base, raw_fw_ver);
+	/* Report back supported comp_mask bits. For now no comp_mask bit is
+	 * defined */
+	attr->comp_mask = resp->comp_mask & 0;
+	if (attr_size >= offsetof(struct ibv_device_attr_ex, odp_caps) +
+			 sizeof(attr->odp_caps)) {
+		if (resp->response_length >=
+		    offsetof(struct ibv_query_device_resp_ex, odp_caps) +
+		    sizeof(resp->odp_caps)) {
+			attr->odp_caps.general_caps = resp->odp_caps.general_caps;
+			attr->odp_caps.per_transport_caps.rc_odp_caps =
+				resp->odp_caps.per_transport_caps.rc_odp_caps;
+			attr->odp_caps.per_transport_caps.uc_odp_caps =
+				resp->odp_caps.per_transport_caps.uc_odp_caps;
+			attr->odp_caps.per_transport_caps.ud_odp_caps =
+				resp->odp_caps.per_transport_caps.ud_odp_caps;
+		} else {
+			memset(&attr->odp_caps, 0, sizeof(attr->odp_caps));
+		}
+	}
+
+	return 0;
 }

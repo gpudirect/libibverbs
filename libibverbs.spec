@@ -12,7 +12,7 @@
 
 Name: libibverbs
 Version: 1.2.1mlnx1
-Release: OFED.3.4.0.1.4
+Release: OFED.4.0.1.5.3
 Summary: A library for direct userspace use of RDMA (InfiniBand/iWARP) hardware
 
 Group: System Environment/Libraries

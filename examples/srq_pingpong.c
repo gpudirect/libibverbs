@@ -52,8 +52,6 @@
 enum {
 	PINGPONG_RECV_WRID = 1,
 	PINGPONG_SEND_WRID = 2,
-
-	MAX_QP             = 256,
 };
 
 static int page_size;
@@ -65,12 +63,12 @@ struct pingpong_context {
 	struct ibv_mr		*mr;
 	struct ibv_cq		*cq;
 	struct ibv_srq		*srq;
-	struct ibv_qp		*qp[MAX_QP];
+	struct ibv_qp		**qp;
 	void			*buf;
 	int			 size;
 	int			 num_qp;
 	int			 rx_depth;
-	int			 pending[MAX_QP];
+	int			 *pending;
 	struct ibv_port_attr	 portinfo;
 };
 
@@ -144,7 +142,8 @@ static int pp_connect_ctx(struct pingpong_context *ctx, int port, enum ibv_mtu m
 }
 
 static struct pingpong_dest *pp_client_exch_dest(const char *servername, int port,
-						 const struct pingpong_dest *my_dest)
+						 const struct pingpong_dest *my_dest,
+						 int num_qp)
 {
 	struct addrinfo *res, *t;
 	struct addrinfo hints = {
@@ -189,7 +188,7 @@ static struct pingpong_dest *pp_client_exch_dest(const char *servername, int por
 		return NULL;
 	}
 
-	for (i = 0; i < MAX_QP; ++i) {
+	for (i = 0; i < num_qp; ++i) {
 		gid_to_wire_gid(&my_dest[i].gid, gid);
 		sprintf(msg, "%04x:%06x:%06x:%s", my_dest[i].lid,
 					my_dest[i].qpn, my_dest[i].psn, gid);
@@ -199,11 +198,11 @@ static struct pingpong_dest *pp_client_exch_dest(const char *servername, int por
 		}
 	}
 
-	rem_dest = malloc(MAX_QP * sizeof *rem_dest);
+	rem_dest = malloc(num_qp * sizeof *rem_dest);
 	if (!rem_dest)
 		goto out;
 
-	for (i = 0; i < MAX_QP; ++i) {
+	for (i = 0; i < num_qp; ++i) {
 		n = 0;
 		while (n < sizeof msg) {
 			r = read(sockfd, msg + n, sizeof msg - n);
@@ -295,11 +294,11 @@ static struct pingpong_dest *pp_server_exch_dest(struct pingpong_context *ctx,
 		return NULL;
 	}
 
-	rem_dest = malloc(MAX_QP * sizeof *rem_dest);
+	rem_dest = malloc(ctx->num_qp * sizeof *rem_dest);
 	if (!rem_dest)
 		goto out;
 
-	for (i = 0; i < MAX_QP; ++i) {
+	for (i = 0; i < ctx->num_qp; ++i) {
 		n = 0;
 		while (n < sizeof msg) {
 			r = read(connfd, msg + n, sizeof msg - n);
@@ -325,7 +324,7 @@ static struct pingpong_dest *pp_server_exch_dest(struct pingpong_context *ctx,
 		goto out;
 	}
 
-	for (i = 0; i < MAX_QP; ++i) {
+	for (i = 0; i < ctx->num_qp; ++i) {
 		gid_to_wire_gid(&my_dest[i].gid, gid);
 		sprintf(msg, "%04x:%06x:%06x:%s", my_dest[i].lid,
 					my_dest[i].qpn, my_dest[i].psn, gid);
@@ -423,6 +422,10 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, int size,
 		}
 	}
 
+	ctx->qp = calloc(num_qp, sizeof(struct ibv_qp *));
+	if (!ctx->qp)
+		goto clean_srq;
+
 	for (i = 0; i < num_qp; ++i) {
 		struct ibv_qp_init_attr attr = {
 			.send_cq = ctx->cq,
@@ -468,7 +471,9 @@ clean_qps_full:
 clean_qps:
 	for (--i; i >= 0; --i)
 		ibv_destroy_qp(ctx->qp[i]);
+	free(ctx->qp);
 
+clean_srq:
 	ibv_destroy_srq(ctx->srq);
 
 clean_cq:
@@ -506,6 +511,7 @@ int pp_close_ctx(struct pingpong_context *ctx, int num_qp)
 			return 1;
 		}
 	}
+	free(ctx->qp);
 
 	if (ibv_destroy_srq(ctx->srq)) {
 		fprintf(stderr, "Couldn't destroy SRQ\n");
@@ -623,7 +629,7 @@ int main(int argc, char *argv[])
 	struct ibv_device	*ib_dev;
 	struct ibv_wc		*wc;
 	struct pingpong_context *ctx;
-	struct pingpong_dest     my_dest[MAX_QP];
+	struct pingpong_dest     *my_dest;
 	struct pingpong_dest    *rem_dest;
 	struct timeval           start, end;
 	char                    *ib_devname = NULL;
@@ -644,6 +650,7 @@ int main(int argc, char *argv[])
 	int                      sl = 0;
 	int			 gidx = -1;
 	char			 gid[33];
+	int			 ret = 0;
 
 	srand48(getpid() * time(NULL));
 
@@ -762,7 +769,8 @@ int main(int argc, char *argv[])
 		ib_dev = *dev_list;
 		if (!ib_dev) {
 			fprintf(stderr, "No IB devices found\n");
-			return 1;
+			ret = 1;
+			goto out_dev_list;
 		}
 	} else {
 		int i;
@@ -772,31 +780,41 @@ int main(int argc, char *argv[])
 		ib_dev = dev_list[i];
 		if (!ib_dev) {
 			fprintf(stderr, "IB device %s not found\n", ib_devname);
-			return 1;
+			ret = 1;
+			goto out_dev_list;
 		}
 	}
 
 	ctx = pp_init_ctx(ib_dev, size, num_qp, rx_depth, ib_port, use_event);
-	if (!ctx)
-		return 1;
+	if (!ctx) {
+		ret = 1;
+		goto out_dev_list;
+	}
 
 	routs = pp_post_recv(ctx, ctx->rx_depth);
 	if (routs < ctx->rx_depth) {
 		fprintf(stderr, "Couldn't post receive (%d)\n", routs);
-		return 1;
+		ret = 1;
+		goto out_ctx;
 	}
 
 	if (use_event)
 		if (ibv_req_notify_cq(ctx->cq, 0)) {
 			fprintf(stderr, "Couldn't request CQ notification\n");
-			return 1;
+			ret = 1;
+			goto out_ctx;
 		}
 
-	memset(my_dest, 0, sizeof my_dest);
+	my_dest = calloc(ctx->num_qp, sizeof(struct pingpong_dest));
+	if (!my_dest) {
+		ret = 1;
+		goto out_ctx;
+	}
 
 	if (pp_get_port_info(ctx->context, ib_port, &ctx->portinfo)) {
 		fprintf(stderr, "Couldn't get port info\n");
-		return 1;
+		ret = 1;
+		goto out_my_dest;
 	}
 	for (i = 0; i < num_qp; ++i) {
 		my_dest[i].qpn = ctx->qp[i]->qp_num;
@@ -805,7 +823,8 @@ int main(int argc, char *argv[])
 		if (ctx->portinfo.link_layer != IBV_LINK_LAYER_ETHERNET
 							&& !my_dest[i].lid) {
 			fprintf(stderr, "Couldn't get local LID\n");
-			return 1;
+			ret = 1;
+			goto out_my_dest;
 		}
 
 		if (gidx >= 0) {
@@ -813,7 +832,8 @@ int main(int argc, char *argv[])
 							&my_dest[i].gid)) {
 				fprintf(stderr, "Could not get local gid for "
 							"gid index %d\n", gidx);
-				return 1;
+				ret = 1;
+				goto out_my_dest;
 			}
 		} else
 			memset(&my_dest[i].gid, 0, sizeof my_dest[i].gid);
@@ -825,13 +845,15 @@ int main(int argc, char *argv[])
 	}
 
 	if (servername)
-		rem_dest = pp_client_exch_dest(servername, port, my_dest);
+		rem_dest = pp_client_exch_dest(servername, port, my_dest, num_qp);
 	else
 		rem_dest = pp_server_exch_dest(ctx, ib_port, mtu, port, sl,
 								my_dest, gidx);
 
-	if (!rem_dest)
-		return 1;
+	if (!rem_dest) {
+		ret = 1;
+		goto out_my_dest;
+	}
 
 	inet_ntop(AF_INET6, &rem_dest->gid, gid, sizeof gid);
 
@@ -844,14 +866,23 @@ int main(int argc, char *argv[])
 
 	if (servername)
 		if (pp_connect_ctx(ctx, ib_port, mtu, sl, my_dest, rem_dest,
-									gidx))
-			return 1;
+									gidx)) {
+			ret = 1;
+			goto out_rem_dest;
+		}
+
+	ctx->pending = calloc(ctx->num_qp, sizeof(int));
+	if (!ctx->pending) {
+		ret = 1;
+		goto out_rem_dest;
+	}
 
 	if (servername)
 		for (i = 0; i < num_qp; ++i) {
 			if (pp_post_send(ctx, i)) {
 				fprintf(stderr, "Couldn't post send\n");
-				return 1;
+				ret = 1;
+				goto out_pending;
 			}
 			ctx->pending[i] = PINGPONG_SEND_WRID | PINGPONG_RECV_WRID;
 		}
@@ -861,7 +892,8 @@ int main(int argc, char *argv[])
 
 	if (gettimeofday(&start, NULL)) {
 		perror("gettimeofday");
-		return 1;
+		ret = 1;
+		goto out_pending;
 	}
 
 	rcnt = scnt = 0;
@@ -872,19 +904,22 @@ int main(int argc, char *argv[])
 
 			if (ibv_get_cq_event(ctx->channel, &ev_cq, &ev_ctx)) {
 				fprintf(stderr, "Failed to get cq_event\n");
-				return 1;
+				ret = 1;
+				goto out_pending;
 			}
 
 			++num_cq_events;
 
 			if (ev_cq != ctx->cq) {
 				fprintf(stderr, "CQ event for unknown CQ %p\n", ev_cq);
-				return 1;
+				ret = 1;
+				goto out_pending;
 			}
 
 			if (ibv_req_notify_cq(ctx->cq, 0)) {
 				fprintf(stderr, "Couldn't request CQ notification\n");
-				return 1;
+				ret = 1;
+				goto out_pending;
 			}
 		}
 
@@ -895,7 +930,8 @@ int main(int argc, char *argv[])
 				ne = ibv_poll_cq(ctx->cq, num_wc, wc);
 				if (ne < 0) {
 					fprintf(stderr, "poll CQ failed %d\n", ne);
-					return 1;
+					ret = 1;
+					goto out_pending;
 				}
 			} while (!use_event && ne < 1);
 
@@ -904,14 +940,16 @@ int main(int argc, char *argv[])
 					fprintf(stderr, "Failed status %s (%d) for wr_id %d\n",
 						ibv_wc_status_str(wc[i].status),
 						wc[i].status, (int) wc[i].wr_id);
-					return 1;
+					ret = 1;
+					goto out_pending;
 				}
 
 				qp_ind = find_qp(wc[i].qp_num, ctx, num_qp);
 				if (qp_ind < 0) {
 					fprintf(stderr, "Couldn't find QPN %06x\n",
 						wc[i].qp_num);
-					return 1;
+					ret = 1;
+					goto out_pending;
 				}
 
 				switch ((int) wc[i].wr_id) {
@@ -926,7 +964,8 @@ int main(int argc, char *argv[])
 							fprintf(stderr,
 								"Couldn't post receive (%d)\n",
 								routs);
-							return 1;
+							ret = 1;
+							goto out_pending;
 						}
 					}
 
@@ -936,14 +975,16 @@ int main(int argc, char *argv[])
 				default:
 					fprintf(stderr, "Completion for unknown wr_id %d\n",
 						(int) wc[i].wr_id);
-					return 1;
+					ret = 1;
+					goto out_pending;
 				}
 
 				ctx->pending[qp_ind] &= ~(int) wc[i].wr_id;
 				if (scnt < iters && !ctx->pending[qp_ind]) {
 					if (pp_post_send(ctx, qp_ind)) {
 						fprintf(stderr, "Couldn't post send\n");
-						return 1;
+						ret = 1;
+						goto out_pending;
 					}
 					ctx->pending[qp_ind] = PINGPONG_RECV_WRID |
 							       PINGPONG_SEND_WRID;
@@ -955,7 +996,8 @@ int main(int argc, char *argv[])
 
 	if (gettimeofday(&end, NULL)) {
 		perror("gettimeofday");
-		return 1;
+		ret = 1;
+		goto out_pending;
 	}
 
 	{
@@ -971,11 +1013,16 @@ int main(int argc, char *argv[])
 
 	ibv_ack_cq_events(ctx->cq, num_cq_events);
 
-	if (pp_close_ctx(ctx, num_qp))
-		return 1;
-
-	ibv_free_device_list(dev_list);
+out_pending:
+	free(ctx->pending);
+out_rem_dest:
 	free(rem_dest);
-
-	return 0;
+out_my_dest:
+	free(my_dest);
+out_ctx:
+	if (pp_close_ctx(ctx, num_qp))
+		ret = 1;
+out_dev_list:
+	ibv_free_device_list(dev_list);
+	return ret;
 }

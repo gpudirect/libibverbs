@@ -51,13 +51,58 @@
 
 #include "ibverbs.h"
 
+static int initialized;
+
+static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static pthread_once_t device_list_once = PTHREAD_ONCE_INIT;
 static int num_devices;
 static struct ibv_device **device_list;
 
+static void get_device(struct ibv_device *dev)
+{
+	struct verbs_device *verbs_device = verbs_get_device(dev);
+
+	if (!verbs_device)
+		return;
+
+	pthread_mutex_lock(&verbs_device->reflock);
+	verbs_device->refcount++;
+	pthread_mutex_unlock(&verbs_device->reflock);
+}
+
+static void put_device(struct ibv_device *dev)
+{
+	struct verbs_device *verbs_device = verbs_get_device(dev);
+
+	if (!verbs_device)
+		return;
+
+	pthread_mutex_lock(&verbs_device->reflock);
+	verbs_device->refcount--;
+	if (!verbs_device->refcount && verbs_device->verbs_uninit_func) {
+		pthread_mutex_unlock(&verbs_device->reflock);
+		verbs_device->verbs_uninit_func(verbs_device);
+		return;
+	}
+	pthread_mutex_unlock(&verbs_device->reflock);
+}
+
+static void init_resources(void)
+{
+	initialized = ibverbs_init();
+}
+
 static void count_devices(void)
 {
-	num_devices = ibverbs_init(&device_list);
+	num_devices = ibverbs_get_device_list(&device_list);
+}
+
+static void update_devs_refcount()
+{
+	int i;
+
+	for (i = 0; i < num_devices; i++)
+		get_device(device_list[i]);
 }
 
 struct ibv_device **__ibv_get_device_list(int *num)
@@ -68,12 +113,20 @@ struct ibv_device **__ibv_get_device_list(int *num)
 	if (num)
 		*num = 0;
 
-	pthread_once(&device_list_once, count_devices);
+	pthread_once(&init_once, init_resources);
+	if (initialized < 0) {
+		errno = -initialized;
+		return NULL;
+	}
 
+	pthread_once(&device_list_once, count_devices);
 	if (num_devices < 0) {
 		errno = -num_devices;
 		return NULL;
 	}
+
+	/* Avoid releasing of cached ibv_device */
+	update_devs_refcount();
 
 	l = calloc(num_devices + 1, sizeof (struct ibv_device *));
 	if (!l) {
@@ -90,8 +143,51 @@ struct ibv_device **__ibv_get_device_list(int *num)
 }
 default_symver(__ibv_get_device_list, ibv_get_device_list);
 
+struct ibv_device **__ibv_exp_get_device_list(int *num)
+{
+	struct ibv_device **exp_device_list;
+	struct ibv_device **l = NULL;
+	int exp_num_devices;
+	int i;
+
+	if (num)
+		*num = 0;
+
+	pthread_once(&init_once, init_resources);
+
+	if (initialized < 0) {
+		errno = -initialized;
+		return NULL;
+	}
+
+	exp_num_devices = ibverbs_get_device_list(&exp_device_list);
+	if (exp_num_devices < 0) {
+		errno = -exp_num_devices;
+		return NULL;
+	}
+
+	l = calloc(exp_num_devices + 1, sizeof(struct ibv_device *));
+	if (!l) {
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	for (i = 0; i < exp_num_devices; ++i)
+		l[i] = exp_device_list[i];
+	if (num)
+		*num = exp_num_devices;
+
+	free(exp_device_list);
+	return l;
+}
+default_symver(__ibv_exp_get_device_list, ibv_exp_get_device_list);
+
 void __ibv_free_device_list(struct ibv_device **list)
 {
+	int i;
+
+	for (i = 0; list[i]; i++)
+		put_device(list[i]);
 	free(list);
 }
 default_symver(__ibv_free_device_list, ibv_free_device_list);
@@ -216,84 +312,6 @@ int __ibv_exp_query_mkey(struct ibv_mr *mr,
 	return errno;
 }
 
-int __ibv_exp_rereg_mr(struct ibv_mr *mr, int flags,
-		       struct ibv_pd *pd, void *addr,
-		       size_t length, uint64_t access,
-		       struct ibv_exp_rereg_mr_attr *attr)
-{
-	int dofork_onfail = 0;
-	int err;
-	struct verbs_context_exp *vctx;
-	void *old_addr;
-	size_t old_len;
-	struct ibv_exp_rereg_out out;
-
-	if (attr->comp_mask & ~(IBV_EXP_REREG_MR_ATTR_RESERVED - 1))
-		return errno = EINVAL;
-
-	if (flags & ~IBV_EXP_REREG_MR_FLAGS_SUPPORTED)
-		return errno = EINVAL;
-
-	if ((flags & IBV_EXP_REREG_MR_CHANGE_TRANSLATION) &&
-	    (0 >= length))
-		return errno = EINVAL;
-
-	if (!(flags & IBV_EXP_REREG_MR_CHANGE_ACCESS))
-		access = 0;
-
-	if ((access & IBV_EXP_ACCESS_ALLOCATE_MR) &&
-	    (!(flags & IBV_EXP_REREG_MR_CHANGE_TRANSLATION) ||
-	    (addr != NULL)))
-			return errno = EINVAL;
-
-	if ((!(access & IBV_EXP_ACCESS_ALLOCATE_MR)) &&
-	    (flags & IBV_EXP_REREG_MR_CHANGE_TRANSLATION) &&
-	    (addr == NULL))
-		return errno = EINVAL;
-
-	vctx = verbs_get_exp_ctx_op(mr->context, drv_exp_rereg_mr);
-	if (!vctx)
-		return errno = ENOSYS;
-
-	/* If address will be allocated internally fork support is handled by the provider */
-	if (!(access & IBV_EXP_ACCESS_ALLOCATE_MR) &&
-	    flags & IBV_EXP_REREG_MR_CHANGE_TRANSLATION) {
-		err = ibv_dontfork_range(addr, length);
-		if (err)
-			return err;
-		dofork_onfail = 1;
-	}
-
-	old_addr = mr->addr;
-	old_len = mr->length;
-	memset(&out, 0, sizeof(out));
-	if (flags & IBV_EXP_REREG_MR_CHANGE_TRANSLATION)
-		out.need_dofork = 1;
-
-	err = vctx->drv_exp_rereg_mr(mr, flags, pd, addr, length, access, attr, &out);
-	if (!err) {
-		if (flags & IBV_EXP_REREG_MR_CHANGE_TRANSLATION) {
-			if (out.need_dofork)
-				ibv_dofork_range(old_addr, old_len);
-			if (access & IBV_EXP_ACCESS_ALLOCATE_MR) {
-				;
-			} else {
-				/* In case that internal allocator was used
-				     addr already set internally
-				*/
-				mr->addr    = addr;
-				mr->length  = length;
-			}
-		}
-		if (flags & IBV_EXP_REREG_MR_CHANGE_PD)
-			mr->pd = pd;
-	} else if (dofork_onfail) {
-		ibv_dofork_range(addr, length);
-	}
-
-	return err;
-}
-
 static int __ibv_exp_query_gid_attr(struct ibv_context *context,
 				    uint8_t port_num,
 				    unsigned int index,
@@ -339,11 +357,11 @@ static int __ibv_exp_query_gid_attr(struct ibv_context *context,
 				return EINVAL;
 			}
 		} else {
-			if (!strcmp(buff, "IB/RoCE V1"))
+			if (!strcmp(buff, "IB/RoCE v1"))
 				attr->type = IBV_EXP_IB_ROCE_V1_GID_TYPE;
-			else if (!strcmp(buff, "RoCE V2"))
+			else if (!strcmp(buff, "RoCE v2"))
 				attr->type = IBV_EXP_ROCE_V2_GID_TYPE;
-			else if (!strcmp(buff, "RoCE V1.5"))
+			else if (!strcmp(buff, "RoCE v1.5"))
 				attr->type = IBV_EXP_ROCE_V1_5_GID_TYPE;
 			else
 				return EINVAL;
@@ -671,7 +689,6 @@ struct ibv_context *__ibv_open_device(struct ibv_device *device)
 			context_exp->drv_exp_prefetch_mr :
 			__ibv_exp_prefetch_mr);
 
-		 context_exp->exp_rereg_mr = __ibv_exp_rereg_mr;
 		 context_exp->lib_exp_use_priv_env = __ibv_exp_use_priv_env;
 		 context_exp->lib_exp_setenv = __ibv_exp_setenv;
 		ret = ibv_exp_use_priv_env(context);
@@ -684,6 +701,7 @@ struct ibv_context *__ibv_open_device(struct ibv_device *device)
 	context->cmd_fd = cmd_fd;
 	pthread_mutex_init(&context->mutex, NULL);
 
+	get_device(device);
 	return context;
 
 verbs_err:
@@ -716,6 +734,7 @@ static void clear_env(struct verbs_environment *venv)
 
 int __ibv_close_device(struct ibv_context *context)
 {
+	struct ibv_device *device = context->device;
 	int async_fd = context->async_fd;
 	int cmd_fd   = context->cmd_fd;
 
@@ -734,6 +753,7 @@ int __ibv_close_device(struct ibv_context *context)
 
 	close(async_fd);
 	close(cmd_fd);
+	put_device(device);
 
 	return 0;
 }
@@ -746,62 +766,37 @@ int __ibv_get_async_event(struct ibv_context *context,
 	struct verbs_context_exp *vctx;
 	struct ibv_srq_legacy *ibv_srq_legacy = NULL;
 	struct ibv_qp *qp;
-	enum ibv_event_rsc_type rsc_type;
 
 	if (read(context->async_fd, &ev, sizeof ev) != sizeof ev)
 		return -1;
 
 	event->event_type = ev.event_type;
-	rsc_type = ev.rsc_type;
 
-	switch (rsc_type) {
-	case IBV_EVENT_RSC_CQ:
-		event->element.cq = (void *)(uintptr_t)ev.element;
-		switch (event->event_type) {
-		case IBV_EVENT_CQ_ERR:
-			break;
-		default:
-			fprintf(stderr, "Invalid CQ event (%d)\n", event->event_type);
+	switch (event->event_type) {
+	case IBV_EVENT_CQ_ERR:
+		event->element.cq = (void *) (uintptr_t) ev.element;
+		break;
+
+	case IBV_EVENT_QP_FATAL:
+	case IBV_EVENT_QP_REQ_ERR:
+	case IBV_EVENT_QP_ACCESS_ERR:
+	case IBV_EVENT_COMM_EST:
+	case IBV_EVENT_SQ_DRAINED:
+	case IBV_EVENT_PATH_MIG:
+	case IBV_EVENT_PATH_MIG_ERR:
+	case IBV_EVENT_QP_LAST_WQE_REACHED:
+		event->element.qp = (void *) (uintptr_t) ev.element;
+		qp = ibv_find_xrc_qp(event->element.qp->qp_num);
+		if (qp) {
+			/* This is XRC reciever QP created by the legacy API */
+			event->event_type |= IBV_XRC_QP_EVENT_FLAG;
+			event->element.qp = NULL;
+			event->element.xrc_qp_num = qp->qp_num;
 		}
 		break;
 
-	case IBV_EVENT_RSC_QP:
-		event->element.qp = (void *)(uintptr_t)ev.element;
-		switch (event->event_type) {
-		case IBV_EVENT_QP_FATAL:
-		case IBV_EVENT_QP_REQ_ERR:
-		case IBV_EVENT_QP_ACCESS_ERR:
-		case IBV_EVENT_COMM_EST:
-		case IBV_EVENT_SQ_DRAINED:
-		case IBV_EVENT_PATH_MIG:
-		case IBV_EVENT_PATH_MIG_ERR:
-		case IBV_EVENT_QP_LAST_WQE_REACHED:
-			qp = ibv_find_xrc_qp(event->element.qp->qp_num);
-			if (qp) {
-				/* This is XRC reciever QP created by the legacy API */
-				event->event_type |= IBV_XRC_QP_EVENT_FLAG;
-				event->element.qp = NULL;
-				event->element.xrc_qp_num = qp->qp_num;
-			}
-			break;
-		default:
-			fprintf(stderr, "Invalid QP event (%d)\n", event->event_type);
-		}
-		break;
-
-	case IBV_EVENT_RSC_DCT:
-		event->element.dct = (void *)(uintptr_t)ev.element;
-		switch (event->event_type) {
-		case IBV_EXP_EVENT_DCT_KEY_VIOLATION:
-		case IBV_EXP_EVENT_DCT_ACCESS_ERR:
-		case IBV_EXP_EVENT_DCT_REQ_ERR:
-			break;
-		default:
-			fprintf(stderr, "Invalid DCT event (%d)\n", event->event_type);
-		}
-		break;
-
-	case IBV_EVENT_RSC_SRQ:
+	case IBV_EVENT_SRQ_ERR:
+	case IBV_EVENT_SRQ_LIMIT_REACHED:
 		vctx = verbs_get_exp_ctx_op(context, drv_exp_get_legacy_xrc);
 		if (vctx)
 			/* ev.elemant is ibv_srq comes from the kernel, in case there is leagcy one
@@ -811,34 +806,15 @@ int __ibv_get_async_event(struct ibv_context *context,
 
 		event->element.srq = (ibv_srq_legacy) ? (void *)ibv_srq_legacy :
 						(void *) (uintptr_t) ev.element;
-		switch (event->event_type) {
-		case IBV_EVENT_SRQ_ERR:
-		case IBV_EVENT_SRQ_LIMIT_REACHED:
-			break;
-		default:
-			fprintf(stderr, "Invalid SRQ event (%d)\n", event->event_type);
-		}
-
 		break;
-
-	case IBV_EVENT_RSC_DEVICE:
-		event->element.port_num = ev.element;
-		switch (event->event_type) {
-		case IBV_EVENT_DEVICE_FATAL:
-		case IBV_EVENT_PORT_ACTIVE:
-		case IBV_EVENT_PORT_ERR:
-		case IBV_EVENT_LID_CHANGE:
-		case IBV_EVENT_PKEY_CHANGE:
-		case IBV_EVENT_SM_CHANGE:
-		case IBV_EVENT_CLIENT_REREGISTER:
-		case IBV_EVENT_GID_CHANGE:
-			break;
-		default:
-			fprintf(stderr, "Invalid Device event (%d)\n", event->event_type);
-		}
+	case IBV_EXP_EVENT_DCT_KEY_VIOLATION:
+	case IBV_EXP_EVENT_DCT_ACCESS_ERR:
+	case IBV_EXP_EVENT_DCT_REQ_ERR:
+		event->element.dct = (void *)(uintptr_t)ev.element;
 		break;
 	default:
-		fprintf(stderr, "Invalid resource type (%d)\n", rsc_type);
+		event->element.port_num = ev.element;
+		break;
 	}
 
 	if (context->ops.async_event)
