@@ -103,10 +103,16 @@ struct ibv_exp_peer_buf_alloc_attr {
 	uint32_t comp_mask;
 };
 
+enum ibv_exp_peer_buf_mask {
+	IBV_EXP_PEER_BUF_VERSION	= (1 << 0) /* Must be set */
+};
+
 struct ibv_exp_peer_buf {
+	/* alternate address, to be passed to kernel and converted to bus address */
+	uint64_t peer_addr;
 	void *addr;
 	size_t length;
-	/* Reserved for future extensions, must be 0 */
+	/* Reserved for future extensions, must be 1 */
 	uint32_t comp_mask;
 };
 
