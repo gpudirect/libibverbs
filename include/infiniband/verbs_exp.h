@@ -2194,10 +2194,49 @@ struct ibv_exp_rollback_ctx;
 struct ibv_exp_peer_peek;
 struct ibv_exp_peer_abort_peek;
 
+/**
+ * struct ibv_exp_peer_query_qp - used in ibv_peer_query_qp to extract QP info
+ */
+struct ibv_exp_peer_query_qp {
+	uint32_t qp_num;
+
+	uint64_t tx_wq;
+	uint64_t tx_wqe_cnt;
+	uint64_t tx_dbrec;
+	uint32_t tx_max_post;
+
+	uint64_t rx_wq;
+	uint64_t rx_wqe_cnt;
+	uint64_t rx_dbrec;
+	uint32_t rx_max_post;
+
+	uint64_t bf_reg;
+	uint32_t bf_need_lock;
+	uint32_t bf_offset;
+	uint32_t bf_buf_size;
+	uint32_t bf_uuarn;
+	uint32_t bf_db_method;
+};
+
+/**
+ * struct ibv_exp_peer_query_cq - used in ibv_peer_query_cq to extract CQ info
+ */
+struct ibv_exp_peer_query_cq {
+	uint64_t dbrec;
+	uint64_t buf;
+	uint32_t cqe_size;
+	uint32_t n_cqes;
+};
+
+
 struct verbs_context_exp {
 	/*  "grows up" - new fields go here */
 	struct ibv_ah * (*drv_exp_ibv_create_kah)(struct ibv_pd *pd,
 						  struct ibv_exp_ah_attr *attr_exp);
+	int (*exp_peer_query_qp)(struct ibv_qp *qp,
+							 struct ibv_exp_peer_query_qp *query_qp);
+	int (*exp_peer_query_cq)(struct ibv_cq *ibcq,
+							 struct ibv_exp_peer_query_cq *query_cq);
 	int (*exp_peer_peek_cq)(struct ibv_cq *ibcq,
 				struct ibv_exp_peer_peek *peek_ctx);
 	int (*exp_peer_abort_peek_cq)(struct ibv_cq *ibcq,
@@ -3539,6 +3578,31 @@ static inline int ibv_exp_query_gid_attr(struct ibv_context *context,
 						IBV_EXP_QUERY_GID_ATTR_RESERVED - 1);
 	return vctx->exp_query_gid_attr(context, port_num, index, attr);
 }
+
+static inline int ibv_peer_query_qp(struct ibv_qp *qp,
+									struct ibv_exp_peer_query_qp *query_qp)
+{
+	struct verbs_context_exp *vctx;
+
+	vctx = verbs_get_exp_ctx_op(qp->context, exp_peer_query_qp);
+	if (!vctx)
+		return ENOSYS;
+
+	return vctx->exp_peer_query_qp(qp, query_qp);
+}
+
+static inline int ibv_peer_query_cq(struct ibv_cq *cq,
+									struct ibv_exp_peer_query_cq *query_cq)
+{
+	struct verbs_context_exp *vctx;
+
+	vctx = verbs_get_exp_ctx_op(cq->context, exp_peer_query_cq);
+	if (!vctx)
+		return ENOSYS;
+
+	return vctx->exp_peer_query_cq(cq, query_cq);
+}
+
 END_C_DECLS
 
 #define VERBS_MAX_ENV_VAL 4096
