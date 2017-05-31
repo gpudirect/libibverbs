@@ -73,6 +73,9 @@ struct pingpong_context {
 	int			 pending;
 	struct ibv_port_attr	 portinfo;
 	int			 inlr_recv;
+#ifdef HAVE_CUDA
+	int                      use_gpu;
+#endif
 };
 
 struct pingpong_dest {
@@ -323,9 +326,129 @@ out:
 	return rem_dest;
 }
 
+#ifdef HAVE_CUDA
+
+#include <cuda.h>
+
+#define ASSERT(x)                                                       \
+    do                                                                  \
+        {                                                               \
+            if (!(x))                                                   \
+                {                                                       \
+                    fprintf(stdout, "Assertion \"%s\" failed at %s:%d\n", #x, __FILE__, __LINE__); \
+                    /*exit(EXIT_FAILURE);*/                                 \
+                }                                                       \
+        } while (0)
+
+#define CUCHECK(stmt)                           \
+    do                                          \
+        {                                       \
+            CUresult result = (stmt);           \
+            ASSERT(CUDA_SUCCESS == result);     \
+        } while (0)
+
+static CUdevice cuDevice;
+static CUcontext cuContext;
+
+static int pp_init_gpu(struct pingpong_context *ctx, size_t _size, unsigned long gpu_id)
+{
+	int ret = 0;
+	const size_t gpu_page_size = 64*1024;
+	size_t size = (_size + gpu_page_size - 1) & ~(gpu_page_size - 1);
+	printf("initializing CUDA\n");
+	CUresult error = cuInit(0);
+	if (error != CUDA_SUCCESS) {
+		printf("cuInit(0) returned %d\n", error);
+		exit(1);
+	}
+
+	int deviceCount = 0;
+	error = cuDeviceGetCount(&deviceCount);
+	if (error != CUDA_SUCCESS) {
+		printf("cuDeviceGetCount() returned %d\n", error);
+		exit(1);
+	}
+	// This function call returns 0 if there are no CUDA capable devices.
+	if (deviceCount == 0) {
+		printf("There are no available device(s) that support CUDA\n");
+		ret = 1;
+		goto out;
+	}
+	int i;
+	for (i=0; i<deviceCount; ++i) {
+		CUdevice gpu_device;
+		CUCHECK(cuDeviceGet(&gpu_device, i));
+		char name[128];
+		CUCHECK(cuDeviceGetName(name, sizeof(name), gpu_device));
+		int pciBusID, pciDeviceID;
+		cuDeviceGetAttribute(&pciBusID, CU_DEVICE_ATTRIBUTE_PCI_BUS_ID, gpu_device);
+		cuDeviceGetAttribute(&pciDeviceID, CU_DEVICE_ATTRIBUTE_PCI_DEVICE_ID, gpu_device);
+		printf("GPU id:%d dev:%d name:%s pci %d:%d\n", i, gpu_device, name, pciBusID, pciDeviceID);
+	}
+	printf("There are %d devices supporting CUDA, picking id=%lu\n", deviceCount, gpu_id);
+
+	CUCHECK(cuDeviceGet(&cuDevice, gpu_id));
+
+	//printf("creating CUDA Ctx\n");
+	// Create context
+	error = cuCtxCreate(&cuContext, CU_CTX_MAP_HOST, cuDevice);
+	if (error != CUDA_SUCCESS) {
+		printf("cuCtxCreate() error=%d\n", error);
+		ret = 1;
+		goto out;
+	}
+
+	error = cuCtxSetCurrent(cuContext);
+	if (error != CUDA_SUCCESS) {
+		printf("cuCtxSetCurrent() error=%d\n", error);
+		ret = 1;
+		goto out;
+	}
+
+	printf("cuMemAlloc() of a %zu bytes GPU buffer\n", size);
+	CUdeviceptr d_A;
+	error = cuMemAlloc(&d_A, size);
+	if (error != CUDA_SUCCESS) {
+		printf("cuMemAlloc error=%d\n", error);
+		ret = 1;
+		goto out;
+	}
+	printf("allocated GPU buffer address at %016llx\n", d_A);
+	ctx->buf = (void*)d_A;
+
+	// same value as below
+	int gpufillval=0x7b;
+	printf("poisoning GPU buffer, filled with '0x%02x' !!!\n", gpufillval);
+	CUCHECK(cuMemsetD8(d_A, gpufillval, size));
+
+ out:
+	return ret;
+}
+
+static int pp_free_gpu(struct pingpong_context *ctx)
+{
+	int ret = 0;
+	CUdeviceptr d_A = (CUdeviceptr) ctx->buf;
+
+	printf("deallocating RX GPU buffer\n");
+	cuMemFree(d_A);
+	d_A = 0;
+
+	printf("destroying current CUDA Ctx\n");
+	CUCHECK(cuCtxDestroy(cuContext));
+
+	return ret;
+}
+
+#endif
+
 static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, unsigned long long size,
 					    int rx_depth, int port,
-					    int use_event, int inlr_recv)
+					    int use_event, int inlr_recv
+#ifdef HAVE_CUDA
+					    , int use_gpu, unsigned long gpu_id
+#endif
+    )
 {
 	struct pingpong_context *ctx;
 	struct ibv_exp_device_attr dattr;
@@ -340,6 +463,19 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, unsigned 
 	ctx->size     = size;
 	ctx->rx_depth = rx_depth;
 
+#ifdef HAVE_CUDA
+	ctx->use_gpu = use_gpu;
+        if (use_gpu) {
+		if (use_contiguous_mr) {
+			fprintf(stderr, "Can't use contiguous MR with GPU memory\n");
+			return NULL;
+		}
+		if(pp_init_gpu(ctx, size + 40, gpu_id)) {
+			fprintf(stderr, "Couldn't allocate work buf.\n");
+			return NULL;
+		}
+	} else
+#endif
 	if (!use_contiguous_mr) {
 		ctx->buf = memalign(page_size, size);
 		if (!ctx->buf) {
@@ -463,8 +599,10 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, unsigned 
 	if (use_contiguous_mr)
 		ctx->buf = ctx->mr->addr;
 
+#ifndef HAVE_CUDA
 	/* FIXME memset(ctx->buf, 0, size); */
 	memset(ctx->buf, 0x7b, size);
+#endif
 
 	ctx->cq = ibv_create_cq(ctx->context, rx_depth + 1, NULL,
 				ctx->channel, 0);
@@ -542,6 +680,11 @@ clean_device:
 	ibv_close_device(ctx->context);
 
 clean_buffer:
+#ifdef HAVE_CUDA
+	if (ctx->use_gpu) {
+		pp_free_gpu(ctx);
+	} else
+#endif
 	if (!use_contiguous_mr)
 		free(ctx->buf);
 
@@ -585,6 +728,11 @@ int pp_close_ctx(struct pingpong_context *ctx)
 		return 1;
 	}
 
+#ifdef HAVE_CUDA
+	if (ctx->use_gpu) {
+		pp_free_gpu(ctx);
+	} else
+#endif
 	if (!use_contiguous_mr)
 		free(ctx->buf);
 
@@ -725,6 +873,10 @@ int main(int argc, char *argv[])
 	int                      inlr_recv = 0;
 	int			 check_nop = 0;
 	int			 err;
+#ifdef HAVE_CUDA
+	int                      use_gpu = 0;
+	unsigned long            gpu_id = 0;
+#endif
 
 	srand48(getpid() * time(NULL));
 	contig_addr = NULL;
@@ -749,10 +901,17 @@ int main(int argc, char *argv[])
 			{ .name = "odp",           .has_arg = 0, .val = 'o' },
 			{ .name = "upstream",      .has_arg = 0, .val = 'u' },
 			{ .name = "contig_addr",   .has_arg = 1, .val = 'z' },
+#ifdef HAVE_CUDA
+			{ .name = "use-gpu", .has_arg = 1, .val = 'G' },
+#endif
 			{ 0 }
 		};
 
-		c = getopt_long(argc, argv, "p:d:i:s:m:r:n:l:ecg:t:aouz:",
+		c = getopt_long(argc, argv,
+#ifdef HAVE_CUDA
+				"G:"
+#endif
+				"p:d:i:s:m:r:n:l:ecg:t:aouz:",
 				long_options, NULL);
 		if (c == -1)
 			break;
@@ -833,6 +992,12 @@ int main(int argc, char *argv[])
 			contig_addr = (void *)(uintptr_t)strtol(optarg, NULL, 0);
 			break;
 
+#ifdef HAVE_CUDA
+		case 'G':
+			gpu_id = strtoul(optarg, NULL, 0);
+			use_gpu = 1;
+			break;
+#endif
 		default:
 			usage(argv[0]);
 			return 1;
@@ -877,7 +1042,11 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	ctx = pp_init_ctx(ib_dev, size, rx_depth, ib_port, use_event, inlr_recv);
+	ctx = pp_init_ctx(ib_dev, size, rx_depth, ib_port, use_event, inlr_recv
+#ifdef HAVE_CUDA
+			  , use_gpu, gpu_id
+#endif
+		);
 	if (!ctx)
 		return 1;
 
