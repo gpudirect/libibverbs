@@ -18,6 +18,8 @@ AC_PROG_LIBTOOL
 
 LT_INIT
 
+AC_ARG_VAR(CUDA_H_PATH, path to CUDA Toolkit include directory (enables CUDA support))
+
 ##########################
 # Enable tests
 #
@@ -121,6 +123,13 @@ AC_CACHE_CHECK(for .symver assembler support, ac_cv_asm_symver_support,
         ac_cv_asm_symver_support=no)])
 if test $ac_cv_asm_symver_support = yes; then
     AC_DEFINE([HAVE_SYMVER_SUPPORT], 1, [assembler has .symver support])
+fi
+
+if [test "$CUDA_H_PATH" ]; then
+	AC_DEFINE([HAVE_CUDA], [1], [Enable CUDA feature])
+	AC_DEFINE_UNQUOTED([CUDA_PATH], "$CUDA_H_PATH" , [Path to CUDA toolkit include directory])
+        CFLAGS=$CFLAGS" -I$CUDA_H_PATH"
+	LIBS=$LIBS" -lcuda"
 fi
 
 AC_CONFIG_FILES([Makefile libibverbs.spec])
