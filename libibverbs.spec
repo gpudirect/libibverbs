@@ -11,8 +11,8 @@
 ###
 
 Name: libibverbs
-Version: 1.2.1mlnx1
-Release: OFED.4.0.1.5.3
+Version: 41mlnx1
+Release: OFED.4.3.0.1.8
 Summary: A library for direct userspace use of RDMA (InfiniBand/iWARP) hardware
 
 Group: System Environment/Libraries
@@ -62,7 +62,7 @@ Useful libibverbs1 example programs such as ibv_devinfo, which
 displays information about RDMA devices.
 
 %prep
-%setup -q -n %{name}-1.2.1mlnx1
+%setup -q -n %{name}-41mlnx1
 
 %build
 %if %{_with_valgrind}

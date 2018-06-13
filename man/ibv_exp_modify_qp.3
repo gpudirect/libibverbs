@@ -51,6 +51,16 @@ uint8_t                 alt_port_num;           /* Alternate port number */
 uint8_t                 alt_timeout;            /* Local ack timeout for alternate path (valid only for RC QPs) */
 uint64_t                dct_key;                /* DC target key */
 uint32_t                comp_mask;              /* reserved for future growth (must be 0) */
+uint32_t                flow_entropy;
+uint32_t                rate_limit;             /* Rate limit value for packet pacing */
+struct ibv_exp_burst_info burst_info;           /* Burst info for packet pacing */
+.in -8
+};
+
+struct ibv_exp_burst_info {
+.in +8
+uint32_t        max_burst_sz; /* Total burst size in bytes */
+uint16_t        typical_pkt_sz; /* Typical packet bytes size sent in a burst */
 .in -8
 };
 .fi
@@ -111,6 +121,16 @@ The argument is either 0 or the bitwise OR of one or more of the following flags
 .B IBV_EXP_QP_GROUP_RSS \fR set group RSS
 .TP
 .B IBV_EXP_QP_DC_KEY \fR set DC key
+.PP
+The argument
+.I comp_mask
+can also specify some QP attributes to be modified.
+The argument is either 0 or the bitwise OR of one or more of the following flags:
+.PP
+.TP
+.B IBV_EXP_QP_ATTR_FLOW_ENTROPY
+.TP
+.B IBV_EXP_QP_ATTR_BURST_INFO \fR Configure burst info
 .SH "RETURN VALUE"
 .B ibv_exp_modify_qp()
 returns 0 on success, or the value of errno on failure (which indicates the failure reason).
@@ -129,6 +149,8 @@ bit is set in the device capabilities flags.
 The following tables indicate for each QP Transport Service Type, the
 minimum list of attributes that must be changed upon transitioning QP
 state from: Reset \-\-> Init \-\-> RTR \-\-> RTS.
+.PP
+To configure burst_info, IBV_EXP_QP_RATE_LIMIT from exp_attr_mask and IBV_EXP_QP_ATTR_BURST_INFO from comp_mask must be set at the same time, and the rate_limit value must be non 0.
 .PP
 .nf
 For QP Transport Service Type \fB IBV_QPT_UD\fR:

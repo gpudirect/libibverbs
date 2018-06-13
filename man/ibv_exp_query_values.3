@@ -23,6 +23,8 @@ is enum ibv_exp_values_comp_mask, as defined in <infiniband/verbs_exp.h>. It's b
 .B IBV_EXP_VALUES_HW_CLOCK_NS \fR  Query hardware clock in nano-seconds
 .TP
 .B IBV_EXP_VALUES_HW_CLOCK \fR  Query hardware clock in cycles
+.TP
+.B IBV_EXP_VALUES_CLOCK_INFO \fR Query hardware clock info translation object
 .PP
 The argument
 .I values
@@ -35,6 +37,7 @@ uint32_t                         comp_mask;  /* Bitmask that is used as input to
 uint64_t                         hwclock_ns;  /* If requested, the queried value of hardware clock in nano-seconds */
 uint64_t                         hwclock;  /* If requested, the queried value of
 hardware clock in cycles*/
+struct ibv_exp_clock_info        clock_info; /* If requested, returns the current clock info translation object */
 .in -8
 };
 .fi
@@ -44,8 +47,11 @@ hardware clock in cycles*/
 returns 0.
 
 .SH "NOTES"
+\fBclock_info\fR can be used to translate the value of the HW \fBtimestamp\fR field
+in \fBibv_exp_wc\fR to nano-seconds. For more details see \fBibv_exp_cqe_to_ns()\fR.
 .PP
 .SH "SEE ALSO"
+.BR ibv_exp_cqe_to_ns (3).
 .SH "AUTHORS"
 .TP
 Majd Dibbiny <majd@mellanox.com>

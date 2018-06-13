@@ -288,7 +288,9 @@ static void print_caps_exp(uint64_t caps)
 				   IBV_EXP_DEVICE_DC_INFO |
 				   IBV_EXP_DEVICE_EXT_MASKED_ATOMICS |
 				   IBV_EXP_DEVICE_RX_TCP_UDP_PKT_TYPE |
-				   IBV_EXP_DEVICE_SCATTER_FCS);
+				   IBV_EXP_DEVICE_SCATTER_FCS |
+				   IBV_EXP_DEVICE_WQ_DELAY_DROP |
+				   IBV_EXP_DEVICE_PHYSICAL_RANGE_MR);
 
 	if (caps & IBV_EXP_DEVICE_DC_TRANSPORT)
 		printf("\t\t\t\t\tEXP_DC_TRANSPORT\n");
@@ -336,6 +338,10 @@ static void print_caps_exp(uint64_t caps)
 		printf("\t\t\t\t\tEXP_RX_TCP_UDP_PKT_TYPE\n");
 	if (caps & IBV_EXP_DEVICE_SCATTER_FCS)
 		printf("\t\t\t\t\tEXP_SCATTER_FCS\n");
+	if (caps & IBV_EXP_DEVICE_WQ_DELAY_DROP)
+		printf("\t\t\t\t\tEXP_WQ_DELAY_DROP\n");
+	if (caps & IBV_EXP_DEVICE_PHYSICAL_RANGE_MR)
+		printf("\t\t\t\t\tEXP_PHYSICAL_RANGE_MR\n");
 	if (caps & unknown_flags)
 		printf("\t\t\t\t\tUnknown flags: 0x%" PRIX64 "\n", caps & unknown_flags);
 }
@@ -370,17 +376,23 @@ void print_odp_trans_caps(uint32_t trans)
 	}
 }
 
-void print_odp_caps(struct ibv_exp_odp_caps caps)
+void print_odp_caps(struct ibv_exp_odp_caps caps,
+		    uint64_t odp_mr_max_size)
 {
-	uint64_t unknown_general_caps = ~(IBV_EXP_ODP_SUPPORT);
-	
+	uint64_t unknown_general_caps = ~(IBV_EXP_ODP_SUPPORT |
+					  IBV_EXP_ODP_SUPPORT_IMPLICIT);
+
 	/* general odp caps */
 	printf("\tgeneral_odp_caps:\n");
 	if (caps.general_odp_caps & IBV_EXP_ODP_SUPPORT)
 		printf("\t\t\t\t\tODP_SUPPORT\n");
+	if (caps.general_odp_caps & IBV_EXP_ODP_SUPPORT_IMPLICIT)
+		printf("\t\t\t\t\tODP_SUPPORT_IMPLICIT\n");
 	if (caps.general_odp_caps & unknown_general_caps)
 		printf("\t\t\t\t\tUnkown flags: 0x%" PRIX64 "\n",
 		       caps.general_odp_caps & unknown_general_caps);
+
+	printf("\tmax_size:\t\t\t0x%" PRIX64 "\n", odp_mr_max_size);
 
 	/* RC transport */
 	printf("\trc_odp_caps:\n");
@@ -395,19 +407,6 @@ void print_odp_caps(struct ibv_exp_odp_caps caps)
 	print_odp_trans_caps(caps.per_transport_caps.xrc_odp_caps);
 	printf("\traw_eth_odp_caps:\n");
 	print_odp_trans_caps(caps.per_transport_caps.raw_eth_odp_caps);
-}
-
-static char *qp_type_flag_str(enum ibv_exp_supported_qp_types qp_type_flag)
-{
-	switch (qp_type_flag) {
-	case IBV_EXP_QPT_RC:		return "RC";
-	case IBV_EXP_QPT_UC:		return "UC";
-	case IBV_EXP_QPT_UD:		return "UD";
-	case IBV_EXP_QPT_XRC_INIT:	return "XRC_INIT";
-	case IBV_EXP_QPT_XRC_TGT:	return "XRC_TGT";
-	case IBV_EXP_QPT_RAW_PACKET:	return "RAW_PACKET";
-	default:			return "UNKNOWN";
-	}
 }
 
 static void print_tso_caps(const struct ibv_exp_tso_caps *caps)
@@ -446,6 +445,92 @@ void print_packet_pacing_caps(const struct ibv_exp_packet_pacing_caps *caps)
 		if (caps->supported_qpts & unknown_general_caps)
 			printf("\t\t\t\t\tUnknown flags: 0x%" PRIX32 "\n",
 			       caps->supported_qpts & unknown_general_caps);
+		printf("\tsupport_burst_control:\t\t");
+		if (caps->cap_flags & IBV_EXP_QP_SUPPORT_BURST)
+			printf("YES\n");
+		else
+			printf("NO\n");
+	}
+}
+
+static void print_ooo_caps(const struct ibv_exp_ooo_caps *caps)
+{
+	printf("\tooo_caps:\n");
+	printf("\tooo_rc_caps  = 0x%x\n", caps->rc_caps);
+	printf("\tooo_xrc_caps = 0x%x\n", caps->xrc_caps);
+	printf("\tooo_dc_caps  = 0x%x\n", caps->dc_caps);
+	printf("\tooo_ud_caps  = 0x%x\n", caps->ud_caps);
+
+	if (caps->rc_caps & IBV_EXP_OOO_SUPPORT_RW_DATA_PLACEMENT)
+		printf("\t\t\t\t\tSUPPORT_RC_RW_DATA_PLACEMENT\n");
+	if (caps->xrc_caps & IBV_EXP_OOO_SUPPORT_RW_DATA_PLACEMENT)
+		printf("\t\t\t\t\tSUPPORT_XRC_RW_DATA_PLACEMENT\n");
+	if (caps->dc_caps & IBV_EXP_OOO_SUPPORT_RW_DATA_PLACEMENT)
+		printf("\t\t\t\t\tSUPPORT_DC_RW_DATA_PLACEMENT\n");
+	if (caps->ud_caps & IBV_EXP_OOO_SUPPORT_RW_DATA_PLACEMENT)
+		printf("\t\t\t\t\tSUPPORT_UD_RW_DATA_PLACEMENT\n");
+}
+
+static void print_tunnel_offloads_caps(const uint32_t tunnel_offloads_caps)
+{
+	uint32_t unknown_offloads =
+		~(IBV_EXP_RAW_PACKET_CAP_TUNNELED_OFFLOAD_VXLAN |
+		  IBV_EXP_RAW_PACKET_CAP_TUNNELED_OFFLOAD_GRE |
+		  IBV_EXP_RAW_PACKET_CAP_TUNNELED_OFFLOAD_GENEVE);
+
+	printf("\ttunnel_offloads_caps:\n");
+
+	if (tunnel_offloads_caps &
+	    IBV_EXP_RAW_PACKET_CAP_TUNNELED_OFFLOAD_VXLAN)
+		printf("\t\t\t\t\tTUNNEL_OFFLOADS_VXLAN\n");
+	if (tunnel_offloads_caps &
+	    IBV_EXP_RAW_PACKET_CAP_TUNNELED_OFFLOAD_GRE)
+		printf("\t\t\t\t\tTUNNEL_OFFLOADS_GRE\n");
+	if (tunnel_offloads_caps &
+	    IBV_EXP_RAW_PACKET_CAP_TUNNELED_OFFLOAD_GENEVE)
+		printf("\t\t\t\t\tTUNNEL_OFFLOADS_GENEVE\n");
+	if (tunnel_offloads_caps & unknown_offloads)
+		printf("\t\t\t\t\tUnknown flags: 0x%" PRIX32 "\n",
+			tunnel_offloads_caps & unknown_offloads);
+}
+static void print_sw_parsing_caps(const struct ibv_exp_sw_parsing_caps *caps)
+{
+	uint32_t unknown_offloads = ~(IBV_EXP_SW_PARSING |
+				      IBV_EXP_SW_PARSING_CSUM |
+				      IBV_EXP_SW_PARSING_LSO);
+
+	printf("\tsw_parsing_caps:\n");
+
+	if (caps->sw_parsing_offloads & IBV_EXP_SW_PARSING)
+		printf("\t\t\t\t\tSW_PARSING\n");
+	if (caps->sw_parsing_offloads & IBV_EXP_SW_PARSING_CSUM)
+		printf("\t\t\t\t\tSW_PARSING_CSUM\n");
+	if (caps->sw_parsing_offloads & IBV_EXP_SW_PARSING_LSO)
+		printf("\t\t\t\t\tSW_PARSING_LSO\n");
+	if (caps->sw_parsing_offloads & unknown_offloads)
+		printf("\t\t\t\t\tUnknown flags: 0x%" PRIX32 "\n",
+			caps->sw_parsing_offloads & unknown_offloads);
+
+	printf("\tsupported_qp:\n");
+	if (ibv_is_qpt_supported(caps->supported_qpts, IBV_QPT_RAW_PACKET))
+			printf("\t\t\t\t\tSUPPORT_RAW_PACKET\n");
+}
+
+static void print_tm_caps(const struct ibv_exp_tm_caps *caps)
+{
+	if (caps->max_num_tags) {
+		printf("\tmax_rndv_hdr_size:\t\t0x%x\n",
+		       caps->max_rndv_hdr_size);
+		printf("\tmax_num_tags:\t\t\t0x%x\n", caps->max_num_tags);
+		printf("\tmax_ops:\t\t\t0x%x\n", caps->max_ops);
+		printf("\tmax_sge:\t\t\t0x%x\n", caps->max_sge);
+		printf("\tcapability_flags:\n");
+		if (caps->capability_flags & IBV_EXP_TM_CAP_RC)
+			printf("\t\t\t\t\tIBV_EXP_TM_CAP_RC\n");
+		if (caps->capability_flags & IBV_EXP_TM_CAP_DC)
+			printf("\t\t\t\t\tIBV_EXP_TM_CAP_DC\n");
+	} else {
+		printf("\ttag matching not supported\n");
 	}
 }
 
@@ -554,23 +639,28 @@ static int print_hca_cap(struct ibv_device *ib_dev, uint8_t ib_port)
 		printf("\tmax_send_wqe_inline_klms:\t%d\n", device_attr.umr_caps.max_send_wqe_inline_klms);
 		printf("\tmax_umr_recursion_depth:\t%d\n", device_attr.umr_caps.max_umr_recursion_depth);
 		printf("\tmax_umr_stride_dimension:\t%d\n", device_attr.umr_caps.max_umr_stride_dimension);
-		print_odp_caps(device_attr.odp_caps);
+		print_odp_caps(device_attr.odp_caps, device_attr.odp_mr_max_size);
 		printf("\tmax_dct:\t\t\t%d\n", device_attr.max_dct);
 		printf("\tmax_device_ctx:\t\t\t%d\n", device_attr.max_device_ctx);
 		if ((device_attr.comp_mask & IBV_EXP_DEVICE_ATTR_MP_RQ) &&
 		    device_attr.mp_rq_caps.supported_qps) {
-			enum ibv_exp_supported_qp_types qp_type_flag = IBV_EXP_QPT_RC;
+			uint32_t unknown_types_mask =
+					~(IBV_EXP_MP_RQ_SUP_TYPE_SRQ_TM |
+					  IBV_EXP_MP_RQ_SUP_TYPE_WQ_RQ);
+			uint32_t types_mask =
+				device_attr.mp_rq_caps.supported_qps;
 			uint32_t unknown_shifts_flags = device_attr.mp_rq_caps.allowed_shifts &
 							~IBV_EXP_MP_RQ_2BYTES_SHIFT;
 
 			printf("\tMulti-Packet RQ supported\n");
-			printf("\t\tSupported for QP types: ");
-			while (qp_type_flag < IBV_EXP_QPT_RESERVED) {
-				if (device_attr.mp_rq_caps.supported_qps & qp_type_flag)
-					printf("%s ", qp_type_flag_str(qp_type_flag));
-				qp_type_flag <<= 1;
-			}
-			printf("\n");
+			printf("\t\tSupported for objects type:\n");
+			if (types_mask & IBV_EXP_MP_RQ_SUP_TYPE_SRQ_TM)
+				printf("\t\t\tIBV_EXP_MP_RQ_SUP_TYPE_SRQ_TM\n");
+			if (types_mask & IBV_EXP_MP_RQ_SUP_TYPE_WQ_RQ)
+				printf("\t\t\tIBV_EXP_MP_RQ_SUP_TYPE_WQ_RQ\n");
+			if (types_mask & unknown_types_mask)
+				printf("\t\t\tUnkown types: 0x%x\n",
+				       types_mask & unknown_types_mask);
 			printf("\t\tSupported payload shifts:\n");
 			if (device_attr.mp_rq_caps.allowed_shifts & IBV_EXP_MP_RQ_2BYTES_SHIFT)
 				printf("\t\t\t2 bytes\n");
@@ -604,6 +694,16 @@ static int print_hca_cap(struct ibv_device *ib_dev, uint8_t ib_port)
 		printf("\trx_pad_end_addr_align:\t%d\n", device_attr.rx_pad_end_addr_align);
 		print_tso_caps(&device_attr.tso_caps);
 		print_packet_pacing_caps(&device_attr.packet_pacing_caps);
+		print_ooo_caps(&device_attr.ooo_caps);
+		print_sw_parsing_caps(&device_attr.sw_parsing_caps);
+		print_tm_caps(&device_attr.tm_caps);
+		print_tunnel_offloads_caps(device_attr.tunnel_offloads_caps);
+		if (device_attr.comp_mask & IBV_EXP_DEVICE_ATTR_TUNNELED_ATOMIC) {
+			printf("\tTunneled atomic:\t\t");
+			if (device_attr.tunneled_atomic_caps &
+			    IBV_EXP_TUNNELED_ATOMIC_SUPPORTED)
+				printf("SUPPORT\n");
+		}
 	}
 
 	if (device_attr.phys_port_cnt)

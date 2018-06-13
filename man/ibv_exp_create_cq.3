@@ -45,7 +45,7 @@ uint32_t                  comp_mask;   /* Identifies valid fields. Use enum ibv_
 .nf
 uint32_t                  flags;       /* Flags mask to create CQ with extra features */
 struct ibv_exp_res_domain *res_domain; /* Provides resource domain to indicate the CQ threading and message model */
-				       /* Create CQ with Peer-direct sync support */
+				       /* Create CQ with Peer-direct async support */
 struct ibv_exp_peer_direct_attr *peer_direct_attrs;
 .in -8
 };

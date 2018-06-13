@@ -1,0 +1,92 @@
+.\" -*- nroff -*-
+.\"
+.TH IBV_EXP_ALLOC_DM 3 2017-07-25 libibverbs "Libibverbs Programmer's Manual"
+.SH "NAME"
+ibv_exp_alloc_dm, ibv_exp_free_dm, ibv_exp_memcpy_dm \- allocate or free a device memory buffer (DMs) and perform memory copy to or
+from it
+.SH "SYNOPSIS"
+.nf
+.B #include <infiniband/verbs_exp.h>
+.sp
+.BI "struct ibv_exp_dm *ibv_exp_alloc_dm(struct ibv_context " "*context",
+.BI "                                    struct ibv_alloc_dm_attr " "*attr");
+.sp
+.BI "int ibv_exp_free_dm(struct ibv_exp_dm " "*dm");
+.sp
+.BI "int ibv_exp_memcpy_dm(struct ibv_exp_dm " "*dm",
+.BI "                      struct ibv_memcpy_dm_attr " "*attr");
+.fi
+.SH "DESCRIPTION"
+.B ibv_exp_alloc_dm()
+allocates a device memory buffer for the RDMA device context
+.I context\fR.
+The argument
+.I attr
+is a pointer to an ibv_exp_alloc_dm_attr struct, as defined in <infiniband/verbs_exp.h>.
+.PP
+.B ibv_exp_free_dm()
+free the device memory buffer
+.I dm\fR.
+.PP
+.B ibv_exp_memcpy_dm()
+Copy to/from device memory buffer
+.I dm
+from/to a host memory buffer.
+The argument
+.I attr
+is a pointer to an ibv_exp_memcpy_dm_attr struct, as define in <infiniband/verbs_exp.h>.
+.nf
+
+struct ibv_exp_alloc_dm_attr {
+.in +8
+size_t length;			/* Length of desired device memory buffer *.
+uint32_t comp_mask;		/* Compatibility mask that defines which of the following variables are valid */
+.in -8
+};
+
+struct ibv_exp_memcpy_dm_attr {
+.in +8
+enum ibv_exp_dm_memcpy_dir memcpy_dir;	/* Copy type and direction */
+void *host_addr;		/* Host memory address pointer. */
+uint64_t dm_offset;		/* Offset within the allocated device memory buffer to start the copy operation from. */
+size_t length;			/* The length, in bytes, to copy. */
+uint32_t comp_mask;		/* Compatibility mask that defines which of the following variables are valid */
+.in -8
+};
+
+enum ibv_exp_dm_memcpy_dir {
+.in +8
+IBV_EXP_DM_CPY_TO_DEVICE,		/* Copy direction is from host to device memory */
+IBV_EXP_DM_CPY_TO_HOST,		/* Copy direction is from device to host memory */
+.in -8
+};
+.fi
+.SH "RETURN VALUE"
+.B ibv_exp_alloc_dm()
+returns a pointer to the allocated device memory buffer, or NULL if the request fails.
+.PP
+.B ibv_exp_free_dm()
+returns 0 on success, or the value of errno on failure (which indicates the failure reason).
+.B ibv_exp_alloc_dm()
+returns 0 on success, or the value of errno on failure (which indicates the failure reason).
+.PP
+.SH "NOTES"
+.B ibv_exp_alloc_dm()
+may fail if the desired allocation length doesn't fit device specific allocation constrains
+such as minimum allocation length and length alignment. It may also fail if device has no more
+free device memory left, where the maximum amount of allocated memory is provided by the
+.I max_dm_size\fR attribute in
+.I ibv_device_attr_ex\fR struct.
+.PP
+.B ibv_exp_free_dm()
+may fail if any other resource (MR) is still associated with the DM being
+freed.
+.PP
+.B ibv_exp_memcpy_dm()
+may fail if copy attributes exceed allocated buffer size and/or access constrains are not met
+(such as minimum copy size, address alignment).
+.SH "SEE ALSO"
+.BR ibv_exp_query_device (3),
+.SH "AUTHORS"
+.TP
+Ariel Levkovich <lariel@mellanox.com>

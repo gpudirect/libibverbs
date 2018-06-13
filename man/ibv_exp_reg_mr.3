@@ -32,6 +32,7 @@ size_t                           length;     /* MR's length */
 uint64_t                         exp_access; /* Use ibv_exp_access_flags */
 uint32_t                         comp_mask;  /* use ibv_exp_reg_mr_in_comp_mask */
 uint32_t                         create_flags /* use ibv_exp_reg_mr_create_flags */ 
+struct ibv_exp_dm 		*dm;	     /* Device memory buffer to register */
 .in -8
 };
 
@@ -71,6 +72,8 @@ describes the desired memory protection attributes; it is either 0 or the bitwis
 .B IBV_EXP_ACCESS_RELAXED\fR      Create an on-demand paging Relaxed MR.
 .TP
 .B IBV_EXP_ACCESS_PHYSICAL_ADDR\fR      Create a MR supporitng physical addresses.
+.TP
+.B IBV_EXP_ACCESS_TUNNELED_ATOMIC\fR    Create a MR supporting tunneled atomic
 .TP
 .B IBV_EXP_ACCESS_RESERVED\fR    Library's internal variable - used for validity checks.
 .PP
@@ -122,7 +125,16 @@ is set, then
 .I in->length
 should be set to zero and
 .I in->addr
-must be NULL. Physical address MR will allow to use physical addresses in WQEs instead of virtual addresses.
+must be NULL. As a result the whole address space will be registered and the
+user should use physical addresses in the WQEs instead of virtual addresses.
+If device supports
+.B IBV_EXP_DEVICE_PHYSICAL_RANGE_MR
+in device capabilities, the user can provide a specific address and length in
+.I in->length
+and
+.I in->addr.
+In this case, only addresses from the registered range can be used in the WQEs.
+In both cases
 .B IBV_EXP_ACCESS_PHYSICAL_ADDR
 can be combined only with
 .B IBV_EXP_ACCESS_LOCAL_WRITE,
@@ -130,6 +142,15 @@ can be combined only with
 .B IBV_EXP_ACCESS_REMOTE_READ
 or
 .B IBV_EXP_ACCESS_REMOTE_ATOMIC.
+.PP
+if
+.B IBV_EXP_ACCESS_TUNNELED_ATOMIC
+is set, part of the MSB's of the address is set to a predefined value in order to generate a
+command in the CPU and do atomic for RDMA WR operations in the memory controller
+instead of accessing the user's memory (DMA). That is saying
+.B IBV_EXP_ACCESS_REMOTE_WRITE
+must be set as well to support this opration from remote side. This operation is only eligible
+when tunneled_atomic_caps from ibv_exp_query_device has bit mask IBV_EXP_TUNNELED_ATOMIC_SUPPORTED set.
 .PP
 Local read access is always enabled for the MR.
 
@@ -145,6 +166,10 @@ describes which fields after comp_mask are present and valid; it is either 0 or 
 .PP
 .B IBV_EXP_REG_MR_CREATE_FLAGS \fR  the field
 .B in->create_flags
+is present and the driver should use it.
+.PP
+.B IBV_EXP_REG_MR_DM \fR  the field
+.B in->dm
 is present and the driver should use it.
 
 .SH "RETURN VALUE"
@@ -191,6 +216,9 @@ and
 .BR ibv_post_recv (3),
 .BR ibv_post_srq_recv (3),
 .BR ibv_reg_shared_mr (3)
+.BR ibv_exp_alloc_dm (3)
+.BR ibv_exp_free_dm (3)
+
 .SH "AUTHORS"
 .TP
 Dotan Barak <dotanba@gmail.com>
@@ -198,3 +226,5 @@ Dotan Barak <dotanba@gmail.com>
 Majd Dibbiny <majd@mellanox.com>
 .TP
 Moshe Lazer <moshel@mellanox.com>
+.TP
+Ariel Levkovich <lariel@mellanox.com>

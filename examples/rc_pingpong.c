@@ -57,7 +57,9 @@ enum {
 static int page_size;
 static int use_contiguous_mr;
 static int use_odp;
+static int use_dm;
 static int use_upstream;
+static int use_ooo;
 static void *contig_addr;
 
 struct pingpong_context {
@@ -65,6 +67,7 @@ struct pingpong_context {
 	struct ibv_comp_channel *channel;
 	struct ibv_pd		*pd;
 	struct ibv_mr		*mr;
+	struct ibv_exp_dm	*dm;
 	struct ibv_cq		*cq;
 	struct ibv_qp		*qp;
 	void			*buf;
@@ -86,7 +89,7 @@ static int pp_connect_ctx(struct pingpong_context *ctx, int port, int my_psn,
 			  enum ibv_mtu mtu, int sl,
 			  struct pingpong_dest *dest, int sgid_idx)
 {
-	struct ibv_qp_attr attr = {
+	struct ibv_exp_qp_attr attr = {
 		.qp_state		= IBV_QPS_RTR,
 		.path_mtu		= mtu,
 		.dest_qp_num		= dest->qpn,
@@ -101,6 +104,7 @@ static int pp_connect_ctx(struct pingpong_context *ctx, int port, int my_psn,
 			.port_num	= port
 		}
 	};
+	enum ibv_exp_qp_attr_mask attr_mask;
 
 	if (dest->gid.global.interface_id) {
 		attr.ah_attr.is_global = 1;
@@ -108,14 +112,16 @@ static int pp_connect_ctx(struct pingpong_context *ctx, int port, int my_psn,
 		attr.ah_attr.grh.dgid = dest->gid;
 		attr.ah_attr.grh.sgid_index = sgid_idx;
 	}
-	if (ibv_modify_qp(ctx->qp, &attr,
-			  IBV_QP_STATE              |
-			  IBV_QP_AV                 |
-			  IBV_QP_PATH_MTU           |
-			  IBV_QP_DEST_QPN           |
-			  IBV_QP_RQ_PSN             |
-			  IBV_QP_MAX_DEST_RD_ATOMIC |
-			  IBV_QP_MIN_RNR_TIMER)) {
+	attr_mask = IBV_QP_STATE              |
+		    IBV_QP_AV                 |
+		    IBV_QP_PATH_MTU           |
+		    IBV_QP_DEST_QPN           |
+		    IBV_QP_RQ_PSN             |
+		    IBV_QP_MAX_DEST_RD_ATOMIC |
+		    IBV_QP_MIN_RNR_TIMER;
+	attr_mask |= use_ooo ? IBV_EXP_QP_OOO_RW_DATA_PLACEMENT : 0;
+
+	if (ibv_exp_modify_qp(ctx->qp, &attr, attr_mask)) {
 		fprintf(stderr, "Failed to modify QP to RTR\n");
 		return 1;
 	}
@@ -126,13 +132,13 @@ static int pp_connect_ctx(struct pingpong_context *ctx, int port, int my_psn,
 	attr.rnr_retry	    = 7;
 	attr.sq_psn	    = my_psn;
 	attr.max_rd_atomic  = 1;
-	if (ibv_modify_qp(ctx->qp, &attr,
-			  IBV_QP_STATE              |
-			  IBV_QP_TIMEOUT            |
-			  IBV_QP_RETRY_CNT          |
-			  IBV_QP_RNR_RETRY          |
-			  IBV_QP_SQ_PSN             |
-			  IBV_QP_MAX_QP_RD_ATOMIC)) {
+	if (ibv_exp_modify_qp(ctx->qp, &attr,
+			      IBV_QP_STATE              |
+			      IBV_QP_TIMEOUT            |
+			      IBV_QP_RETRY_CNT          |
+			      IBV_QP_RNR_RETRY          |
+			      IBV_QP_SQ_PSN             |
+			      IBV_QP_MAX_QP_RD_ATOMIC)) {
 		fprintf(stderr, "Failed to modify QP to RTS\n");
 		return 1;
 	}
@@ -354,7 +360,6 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, unsigned 
 			ibv_get_device_name(ib_dev));
 		goto clean_buffer;
 	}
-
 	if (inlr_recv) {
 		dattr.comp_mask |= IBV_EXP_DEVICE_ATTR_INLINE_RECV_SZ;
 		ret = ibv_exp_query_device(ctx->context, &dattr);
@@ -384,7 +389,7 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, unsigned 
 		goto clean_comp_channel;
 	}
 
-	if (!use_contiguous_mr && !use_odp) {
+	if (!use_contiguous_mr && !use_odp && !use_dm) {
 		ctx->mr = ibv_reg_mr(ctx->pd, ctx->buf, size,
 				     IBV_ACCESS_LOCAL_WRITE);
 	} else if (use_odp) {
@@ -436,7 +441,7 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, unsigned 
 
 			ctx->mr = ibv_exp_reg_mr(&in);
 		}
-	} else {
+	} else if (use_contiguous_mr) {
 		struct ibv_exp_reg_mr_in in;
 
 		in.pd = ctx->pd;
@@ -452,12 +457,42 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, unsigned 
 		}
 
 		ctx->mr = ibv_exp_reg_mr(&in);
-	}
-		
+	} else {
+		struct ibv_exp_alloc_dm_attr dm_attr = {0};
+		struct ibv_exp_reg_mr_in mr_in = { .pd = ctx->pd,
+						   .addr = 0,
+						   .length = size,
+						   .exp_access = IBV_EXP_ACCESS_LOCAL_WRITE,
+						   .create_flags = 0};
+
+		dattr.comp_mask = IBV_EXP_DEVICE_ATTR_MAX_DM_SIZE;
+		ret = ibv_exp_query_device(ctx->context, &dattr);
+		if (ret) {
+			fprintf(stderr, "Couldn't query device for max_dm_size\n");
+			goto clean_pd;
+		} else if (!(dattr.comp_mask & IBV_EXP_DEVICE_ATTR_MAX_DM_SIZE)) {
+			fprintf(stderr, "Device memory not supported by driver\n");
+			goto clean_pd;
+		} else if (!(dattr.max_dm_size)) {
+			fprintf(stderr, "Max dm size is zero\n");
+			goto clean_pd;
+		}
+
+		dm_attr.length = size;
+		ctx->dm = ibv_exp_alloc_dm(ctx->context, &dm_attr);
+		if (!ctx->dm) {
+			fprintf(stderr, "Dev mem allocation failed\n");
+			goto clean_pd;
+		}
+
+		mr_in.dm = ctx->dm;
+		mr_in.comp_mask = IBV_EXP_REG_MR_DM;
+		ctx->mr = ibv_exp_reg_mr(&mr_in);
+	}	
 		
 	if (!ctx->mr) {
 		fprintf(stderr, "Couldn't register MR\n");
-		goto clean_pd;
+		goto clean_dm;
 	}
 	
 	if (use_contiguous_mr)
@@ -465,6 +500,18 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, unsigned 
 
 	/* FIXME memset(ctx->buf, 0, size); */
 	memset(ctx->buf, 0x7b, size);
+
+	if (use_dm) {
+		struct ibv_exp_memcpy_dm_attr cpy_attr = {0};
+
+		cpy_attr.memcpy_dir = IBV_EXP_DM_CPY_TO_DEVICE;
+		cpy_attr.host_addr = (void *)ctx->buf;
+		cpy_attr.length = size;
+		if (ibv_exp_memcpy_dm(ctx->dm, &cpy_attr)) {
+			fprintf(stderr, "Copy to dev mem failed\n");
+			goto clean_dm;
+		}
+	}
 
 	ctx->cq = ibv_create_cq(ctx->context, rx_depth + 1, NULL,
 				ctx->channel, 0);
@@ -520,7 +567,9 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, unsigned 
 		}
 	}
 
+
 	return ctx;
+
 
 clean_qp:
 	ibv_destroy_qp(ctx->qp);
@@ -530,6 +579,10 @@ clean_cq:
 
 clean_mr:
 	ibv_dereg_mr(ctx->mr);
+
+clean_dm:
+	if (ctx->dm)
+		ibv_exp_free_dm(ctx->dm);
 
 clean_pd:
 	ibv_dealloc_pd(ctx->pd);
@@ -568,6 +621,13 @@ int pp_close_ctx(struct pingpong_context *ctx)
 		return 1;
 	}
 
+	if (use_dm) {
+		if (ibv_exp_free_dm(ctx->dm)) {
+			fprintf(stderr, "Couldn't free DM\n");
+			return 1;
+		}
+	}
+
 	if (ibv_dealloc_pd(ctx->pd)) {
 		fprintf(stderr, "Couldn't deallocate PD\n");
 		return 1;
@@ -599,7 +659,7 @@ int pp_close_ctx(struct pingpong_context *ctx)
 static int pp_post_recv(struct pingpong_context *ctx, int n)
 {
 	struct ibv_sge list = {
-		.addr	= (uintptr_t) ctx->buf,
+		.addr	= use_dm ? 0 : (uintptr_t) ctx->buf,
 		.length = mmin(ctx->size, MAX_SGE_LEN),
 		.lkey	= ctx->mr->lkey
 	};
@@ -621,7 +681,7 @@ static int pp_post_recv(struct pingpong_context *ctx, int n)
 static int pp_post_send(struct pingpong_context *ctx)
 {
 	struct ibv_sge list = {
-		.addr	= (uintptr_t) ctx->buf,
+		.addr	= use_dm ? 0 : (uintptr_t) ctx->buf,
 		.length =  mmin(ctx->size, MAX_SGE_LEN),
 		.lkey	= ctx->mr->lkey
 	};
@@ -659,7 +719,10 @@ static void usage(const char *argv0)
 	printf("  -a, --check-nop	    check NOP opcode\n");
 	printf("  -o, --odp		    use on demand paging\n");
 	printf("  -u, --upstream            use upstream API\n");
+	printf("  -t, --upstream            use upstream API\n");
 	printf("  -z, --contig_addr         use specifix addr for contig pages MR, must use with -c flag\n");
+	printf("  -b, --ooo                 enable multipath processing\n");
+	printf("  -j, --memic         	    use device memory\n");
 }
 
 int send_nop(struct pingpong_context *ctx)
@@ -749,15 +812,20 @@ int main(int argc, char *argv[])
 			{ .name = "odp",           .has_arg = 0, .val = 'o' },
 			{ .name = "upstream",      .has_arg = 0, .val = 'u' },
 			{ .name = "contig_addr",   .has_arg = 1, .val = 'z' },
+			{ .name = "ooo",           .has_arg = 0, .val = 'b' },
+			{ .name = "memic",         .has_arg = 0, .val = 'j' },
 			{ 0 }
 		};
 
-		c = getopt_long(argc, argv, "p:d:i:s:m:r:n:l:ecg:t:aouz:",
+		c = getopt_long(argc, argv, "p:d:i:s:m:r:n:l:ecg:t:ajouz:",
 				long_options, NULL);
 		if (c == -1)
 			break;
 
 		switch (c) {
+		case 'j':
+			use_dm = 1;
+			break;
 		case 'p':
 			port = strtol(optarg, NULL, 0);
 			if (port < 0 || port > 65535) {
@@ -832,7 +900,9 @@ int main(int argc, char *argv[])
 		case 'z':
 			contig_addr = (void *)(uintptr_t)strtol(optarg, NULL, 0);
 			break;
-
+		case 'b':
+			use_ooo = 1;
+			break;
 		default:
 			usage(argv[0]);
 			return 1;
@@ -851,6 +921,10 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	if (use_dm && (use_contiguous_mr || use_odp)) {
+		fprintf(stderr, "Can't use device memory with on-demand paging or contiguous mr\n");
+		return 1;
+	}
 	page_size = sysconf(_SC_PAGESIZE);
 
 	dev_list = ibv_get_device_list(NULL);
@@ -949,6 +1023,7 @@ int main(int argc, char *argv[])
 				return err;
 			}
 		}
+
 		if (pp_post_send(ctx)) {
 			fprintf(stderr, "Couldn't post send\n");
 			return 1;

@@ -43,7 +43,6 @@
 #include <string.h>
 #include <search.h>
 #include <linux/ip.h>
-#include <netinet/in.h>
 
 #include "ibverbs.h"
 #include "infiniband/verbs_exp.h"
@@ -212,24 +211,23 @@ default_symver(__ibv_dealloc_pd, ibv_dealloc_pd);
 
 struct ibv_mr *__ibv_reg_shared_mr(struct ibv_exp_reg_shared_mr_in *in)
 {
-	struct verbs_context_exp *ctx = verbs_get_exp_ctx(in->pd->context);
-	struct ibv_mr  *mr;
+	fprintf(stderr, "ibv_exp_reg_shared_mr is not supported\n");
 
-	if (!ctx->drv_exp_ibv_reg_shared_mr) {
-		errno = ENOSYS;
-		return NULL;
-	}
+	errno = ENOSYS;
+	return NULL;
+}
 
-	mr = ctx->drv_exp_ibv_reg_shared_mr(in);
-	if (mr) {
-		if (ibv_dontfork_range(mr->addr, mr->length)) {
-			/* dereg_mr without its internal dofork */
-			mr->context->ops.dereg_mr(mr);
-			return NULL;
-		}
-	}
-
-	return mr;
+static int is_shared_mr(uint64_t access_flags)
+{
+	/* We should check whether IBV_EXP_ACCESS_SHARED_MR_USER_READ or
+	 * other shared bits were turned on.
+	 */
+	return !!(access_flags & (IBV_EXP_ACCESS_SHARED_MR_USER_READ |
+				IBV_EXP_ACCESS_SHARED_MR_USER_WRITE |
+				IBV_EXP_ACCESS_SHARED_MR_GROUP_READ |
+				IBV_EXP_ACCESS_SHARED_MR_GROUP_WRITE |
+				IBV_EXP_ACCESS_SHARED_MR_OTHER_READ |
+				IBV_EXP_ACCESS_SHARED_MR_OTHER_WRITE));
 }
 
 struct ibv_mr *__ibv_common_reg_mr(struct ibv_exp_reg_mr_in *in,
@@ -239,13 +237,20 @@ struct ibv_mr *__ibv_common_reg_mr(struct ibv_exp_reg_mr_in *in,
 	int is_contig;
 	int is_odp;
 	int is_pa;
+	int is_dm;
+
+	if (is_shared_mr(in->exp_access)) {
+		fprintf(stderr, "shared_mr flags are not supported\n");
+		return NULL;
+	}
 
 	if ((in->exp_access & IBV_EXP_ACCESS_ALLOCATE_MR) && in->addr != NULL)
 		return NULL;
 
-	if ((in->exp_access & IBV_EXP_ACCESS_PHYSICAL_ADDR) &&
-	    (in->addr || in->length))
+	if ((in->comp_mask & IBV_EXP_REG_MR_DM) && !in->dm)
 		return NULL;
+
+	is_dm = !!(in->comp_mask & IBV_EXP_REG_MR_DM);
 
 	is_contig = !!((in->exp_access & IBV_EXP_ACCESS_ALLOCATE_MR) ||
 		     ((in->comp_mask & IBV_EXP_REG_MR_CREATE_FLAGS) &&
@@ -254,12 +259,12 @@ struct ibv_mr *__ibv_common_reg_mr(struct ibv_exp_reg_mr_in *in,
 	is_odp = !!(in->exp_access & IBV_EXP_ACCESS_ON_DEMAND);
 	is_pa = !!(in->exp_access & IBV_EXP_ACCESS_PHYSICAL_ADDR);
 	/*
-	 * Fork support for contig is handled by the provider.
+	 * Fork support for contig or dm is handled by the provider.
 	 * For ODP no special code is needed.
 	 * Physical MR is not in the process address space, and therefore it is
 	 * not affected by fork.
 	 */
-	if (!is_odp && !is_contig && !is_pa) {
+	if (!is_odp && !is_contig && !is_pa && !is_dm) {
 		if (ibv_dontfork_range(in->addr, in->length))
 			return NULL;
 	}
@@ -882,186 +887,140 @@ static int ibv_find_gid_index(struct ibv_context *context, uint8_t port_num,
 	return ret ? ret : i - 1;
 }
 
-/*
- * The functions ipv6_addr_set() and ipv6_addr_set_v4mapped() were copied from
- * Linux/lib/checksum.c with the following license notice
- *
- *      Linux INET6 implementation
- *
- *      Authors:
- *      Pedro Roque             <roque@di.fc.ul.pt>
- *
- *      This program is free software; you can redistribute it and/or
- *      modify it under the terms of the GNU General Public License
- *      as published by the Free Software Foundation; either version
- *      2 of the License, or (at your option) any later version.
-*/
-
-static inline void ipv6_addr_set(struct in6_addr *addr,
-				 __be32 w1, __be32 w2,
-				 __be32 w3, __be32 w4)
+static inline void map_ipv4_addr_to_ipv6(__be32 ipv4, struct in6_addr *ipv6)
 {
-	addr->s6_addr32[0] = w1;
-	addr->s6_addr32[1] = w2;
-	addr->s6_addr32[2] = w3;
-	addr->s6_addr32[3] = w4;
+	__be32 tmp = 0;
+
+	memcpy(&ipv6->s6_addr32[0], &tmp, 4);
+	memcpy(&ipv6->s6_addr32[1], &tmp, 4);
+	tmp = htonl(0x0000FFFF);
+	memcpy(&ipv6->s6_addr32[2], &tmp, 4);
+	memcpy(&ipv6->s6_addr32[3], &ipv4, 4);
 }
 
-static inline void ipv6_addr_set_v4mapped(const __be32 addr,
-					  struct in6_addr *v4mapped)
+static inline uint16_t ipv4_calc_hdr_csum(uint16_t *data, unsigned int num_hwords)
 {
-	ipv6_addr_set(v4mapped,
-		      0, 0,
-		      htonl(0x0000FFFF),
-		      addr);
+	unsigned int i = 0;
+	uint32_t sum = 0;
+
+	for (i = 0; i < num_hwords; i++)
+		sum += *(data++);
+
+	sum = (sum & 0xffff) + (sum >> 16);
+
+	return ~sum;
 }
 
-/* The functions do_csum() and from32to16() were copied from Linux/lib/checksum.c
- * with the following license notice
- *
- * INET         An implementation of the TCP/IP protocol suite for the LINUX
- *              operating system.  INET is implemented using the  BSD Socket
- *              interface as the means of communication with the user level.
- *
- *              IP/TCP/UDP checksumming routines
- *
- * Authors:     Jorge Cwik, <jorge@laser.satlink.net>
-  *              Arnt Gulbrandsen, <agulbra@nvg.unit.no>
-  *              Tom May, <ftom@netcom.com>
-  *              Andreas Schwab, <schwab@issan.informatik.uni-dortmund.de>
-  *              Lots of code moved from tcp.c and ip.c; see those files
-  *              for more names.
-  *
-  * 03/02/96     Jes Sorensen, Andreas Schwab, Roman Hodek:
-  *              Fixed some nasty bugs, causing some horrible crashes.
-  *              A: At some points, the sum (%0) was used as
-  *              length-counter instead of the length counter
-  *              (%1). Thanks to Roman Hodek for pointing this out.
-  *              B: GCC seems to mess up if one uses too many
-  *              data-registers to hold input values and one tries to
-  *              specify d0 and d1 as scratch registers. Letting gcc
-  *              choose these registers itself solves the problem.
-  *
-  *              This program is free software; you can redistribute it and/or
-  *              modify it under the terms of the GNU General Public License
-  *              as published by the Free Software Foundation; either version
-  *              2 of the License, or (at your option) any later version.
-  */
-
- /* Revised by Kenneth Albanowski for m68knommu. Basic problem: unaligned access
-    kills, so most of the assembly has to go. */
-
-static inline unsigned short from32to16(unsigned long x)
+static inline int get_grh_header_version(struct ibv_grh *grh)
 {
-	/* add up 16-bit and 16-bit for 16+c bit */
-	x = (x & 0xffff) + (x >> 16);
-	/* add up carry.. */
-	x = (x & 0xffff) + (x >> 16);
-	return x;
-}
-
-static unsigned int do_csum(const unsigned char *buff, int len)
-{
-	int odd, count;
-	unsigned int result = 0;
-
-	if (len <= 0)
-		goto out;
-	odd = 1 & (unsigned long) buff;
-	if (odd) {
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-		result += (*buff << 8);
-#else
-		result = *buff;
-#endif
-		len--;
-		buff++;
-	}
-	count = len >> 1;               /* nr of 16-bit words.. */
-	if (count) {
-		if (2 & (unsigned long) buff) {
-			result += *(unsigned short *)buff;
-			count--;
-			len -= 2;
-			buff += 2;
-		}
-		count >>= 1;            /* nr of 32-bit words.. */
-		if (count) {
-			unsigned int carry = 0;
-			do {
-				unsigned int w = *(unsigned int *)buff;
-				count--;
-				buff += 4;
-				result += carry;
-				result += w;
-				carry = (w > result);
-			} while (count);
-			result += carry;
-			result = (result & 0xffff) + (result >> 16);
-		}
-		if (len & 2) {
-			result += *(unsigned short *)buff;
-			buff += 2;
-		}
-	}
-	if (len & 1)
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-		result += *buff;
-#else
-		result += (*buff << 8);
-#endif
-	result = from32to16(result);
-	if (odd)
-		result = ((result >> 8) & 0xff) | ((result & 0xff) << 8);
-out:
-	return result;
-}
-
-uint16_t ip_fast_csum(const void *iph, unsigned int ihl)
-{
-	return ~do_csum(iph, ihl*4);
-}
-
-struct ipv6hdr {
-#if defined(__LITTLE_ENDIAN_BITFIELD)
-	__u8			priority:4,
-				version:4;
-#elif defined(__BIG_ENDIAN_BITFIELD)
-	__u8			version:4,
-				priority:4;
-#else
-#error	"Please fix <asm/byteorder.h>"
-#endif
-	__u8			flow_lbl[3];
-
-	__be16			payload_len;
-	__u8			nexthdr;
-	__u8			hop_limit;
-
-	struct	in6_addr	saddr;
-	struct	in6_addr	daddr;
-};
-
-int get_grh_header_version(void *h)
-{
-	struct iphdr *ip4h = (struct iphdr *)(h + 20);
+	int ip6h_version = (ntohl(grh->version_tclass_flow) >> 28) & 0xf;
+	struct iphdr *ip4h = (struct iphdr *)((void *)grh + 20);
 	struct iphdr ip4h_checked;
-	struct ipv6hdr *ip6h = (struct ipv6hdr *)h;
 
-	if (ip6h->version != 6)
-		return (ip4h->version == 4) ? 4 : 0;
+	if (ip6h_version != 6) {
+		if (ip4h->version == 4)
+			return 4;
+		errno = EPROTONOSUPPORT;
+		return -1;
+	}
 	/* version may be 6 or 4 */
-	if (ip4h->ihl != 5) /* IPv4 header length must be 5 for RR */
+	if (ip4h->ihl != 5) /* IPv4 header length must be 5 for RoCE v2. */
 		return 6;
-	/* Verify checksum.
-	   We can't write on scattered buffers so we need to copy to temp buffer */
+	/*
+	* Verify checksum.
+	* We can't write on scattered buffers so we have to copy to temp
+	* buffer.
+	*/
 	memcpy(&ip4h_checked, ip4h, sizeof(ip4h_checked));
+	/* Need to set the checksum field (check) to 0 before re-calculating
+	 * the checksum.
+	 */
 	ip4h_checked.check = 0;
-	ip4h_checked.check = ip_fast_csum((uint8_t *)&ip4h_checked, 5);
+	ip4h_checked.check = ipv4_calc_hdr_csum((uint16_t *)&ip4h_checked, 10);
 	/* if IPv4 header checksum is OK, believe it */
 	if (ip4h->check == ip4h_checked.check)
 		return 4;
 	return 6;
+}
+
+static inline void set_ah_attr_generic_fields(struct ibv_ah_attr *ah_attr,
+					      struct ibv_wc *wc,
+					      struct ibv_grh *grh,
+					      uint8_t port_num)
+{
+	uint32_t flow_class;
+
+	flow_class = ntohl(grh->version_tclass_flow);
+	ah_attr->grh.flow_label = flow_class & 0xFFFFF;
+	ah_attr->dlid = wc->slid;
+	ah_attr->sl = wc->sl;
+	ah_attr->src_path_bits = wc->dlid_path_bits;
+	ah_attr->port_num = port_num;
+}
+
+static inline int set_ah_attr_by_ipv4(struct ibv_context *context,
+				      struct ibv_ah_attr *ah_attr,
+				      struct iphdr *ip4h, uint8_t port_num)
+{
+	union ibv_gid sgid;
+	int ret;
+
+	/* No point searching multicast GIDs in GID table */
+	if (IN_CLASSD(ntohl(ip4h->daddr))) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	map_ipv4_addr_to_ipv6(ip4h->daddr, (struct in6_addr *)&sgid);
+	ret = ibv_find_gid_index(context, port_num, &sgid,
+				 IBV_EXP_ROCE_V2_GID_TYPE);
+	if (ret < 0)
+		return ret;
+	map_ipv4_addr_to_ipv6(ip4h->saddr,
+			      (struct in6_addr *)&ah_attr->grh.dgid);
+	ah_attr->grh.sgid_index = (uint8_t) ret;
+	ah_attr->grh.hop_limit = ip4h->ttl;
+	ah_attr->grh.traffic_class = ip4h->tos;
+
+	return 0;
+}
+
+#define IB_NEXT_HDR    0x1b
+static inline int set_ah_attr_by_ipv6(struct ibv_context *context,
+				  struct ibv_ah_attr *ah_attr,
+				  struct ibv_grh *grh, uint8_t port_num)
+{
+	uint32_t flow_class;
+	uint32_t sgid_type;
+	int ret;
+
+	/* No point searching multicast GIDs in GID table */
+	if (grh->dgid.raw[0] == 0xFF) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	ah_attr->grh.dgid = grh->sgid;
+	if (grh->next_hdr == IPPROTO_UDP) {
+		sgid_type = IBV_EXP_ROCE_V2_GID_TYPE;
+	} else if (grh->next_hdr == IB_NEXT_HDR) {
+		sgid_type = IBV_EXP_IB_ROCE_V1_GID_TYPE;
+	} else {
+		errno = EPROTONOSUPPORT;
+		return -1;
+	}
+
+	ret = ibv_find_gid_index(context, port_num, &grh->dgid,
+				 sgid_type);
+	if (ret < 0)
+		return ret;
+
+	ah_attr->grh.sgid_index = (uint8_t) ret;
+	flow_class = ntohl(grh->version_tclass_flow);
+	ah_attr->grh.hop_limit = grh->hop_limit;
+	ah_attr->grh.traffic_class = (flow_class >> 20) & 0xFF;
+
+	return 0;
 }
 
 #define CLASS_D_ADDR	(0xeUL << 28)
@@ -1070,85 +1029,36 @@ int ibv_init_ah_from_wc(struct ibv_context *context, uint8_t port_num,
 			struct ibv_wc *wc, struct ibv_grh *grh,
 			struct ibv_ah_attr *ah_attr)
 {
-	union {
-		union ibv_gid gid;
-		struct in6_addr addr;
-	} sgid;
-	uint32_t flow_class;
-	int ret;
-	struct iphdr *iph = (struct iphdr *)((void *)grh + 20);
 	int version;
-	int is_eth;
-	struct ibv_exp_port_attr port_attr;
-	uint32_t gid_type;
-
-	port_attr.comp_mask = IBV_EXP_QUERY_PORT_ATTR_MASK1;
-	port_attr.mask1 = IBV_EXP_QUERY_PORT_LINK_LAYER;
-	ret = ibv_exp_query_port(context, port_num, &port_attr);
-	if (ret)
-		return ret;
-	is_eth = (IBV_LINK_LAYER_ETHERNET == port_attr.link_layer);
+	int ret = 0;
+	struct iphdr *iph;
 
 	memset(ah_attr, 0, sizeof *ah_attr);
-	ah_attr->dlid = wc->slid;
-	ah_attr->sl = wc->sl;
-	ah_attr->src_path_bits = wc->dlid_path_bits;
-	ah_attr->port_num = port_num;
+	set_ah_attr_generic_fields(ah_attr, wc, grh, port_num);
 
 	if (wc->wc_flags & IBV_WC_GRH) {
 		ah_attr->is_global = 1;
-		if (is_eth)
-			version = get_grh_header_version(grh);
-		else
-			version = 6;
+		version = get_grh_header_version(grh);
+
 		if (version == 4) {
+			iph = (struct iphdr *)((void *)grh + 20);
 			if (((ntohl)(iph->daddr) & CLASS_D_MASK) == CLASS_D_ADDR)
 				return EINVAL;
-
-			if (iph->protocol == IPPROTO_UDP)
-				gid_type = IBV_EXP_ROCE_V2_GID_TYPE;
-			else
-				gid_type = IBV_EXP_ROCE_V1_5_GID_TYPE;
-
-			ipv6_addr_set_v4mapped(iph->saddr,
-					       (struct in6_addr *)&ah_attr->grh.dgid);
-			ipv6_addr_set_v4mapped(iph->daddr, (struct in6_addr *)&sgid.addr);
-			ret = ibv_find_gid_index(context, port_num, &sgid.gid, gid_type);
-			if (ret < 0)
-				return ret;
-
-			ah_attr->grh.sgid_index = (uint8_t) ret;
-
-			ah_attr->grh.flow_label = iph->id & 0xfffff;
-			ah_attr->grh.hop_limit = iph->ttl;
-			ah_attr->grh.traffic_class = iph->tos;
-		} else if (version == 6) {
-			ah_attr->grh.dgid = grh->sgid;
+			ret = set_ah_attr_by_ipv4(context, ah_attr,
+						  iph,
+						  port_num);
+		}
+		else if (version == 6) {
 			if (grh->dgid.raw[0] == 0xFF)
 				return EINVAL;
-
-			if (grh->next_hdr == IPPROTO_UDP)
-				gid_type = IBV_EXP_ROCE_V2_GID_TYPE;
-			else if (grh->next_hdr == 0x1b)
-				gid_type = IBV_EXP_IB_ROCE_V1_GID_TYPE;
-			else
-				gid_type = IBV_EXP_ROCE_V1_5_GID_TYPE;
-
-			ret = ibv_find_gid_index(context, port_num, &grh->dgid, gid_type);
-			if (ret < 0)
-				return ret;
-
-			ah_attr->grh.sgid_index = (uint8_t) ret;
-			flow_class = ntohl(grh->version_tclass_flow);
-			ah_attr->grh.flow_label = flow_class & 0xFFFFF;
-			ah_attr->grh.hop_limit = grh->hop_limit;
-			ah_attr->grh.traffic_class = (flow_class >> 20) & 0xFF;
-		} else {
-			errno = EPROTONOSUPPORT;
-			return EPROTONOSUPPORT;
+			ret = set_ah_attr_by_ipv6(context, ah_attr, grh,
+						  port_num);
 		}
+		else
+			ret = -1;
 	}
-	return 0;
+
+	return ret;
 }
 
 struct ibv_ah *ibv_create_ah_from_wc(struct ibv_pd *pd, struct ibv_wc *wc,

@@ -67,6 +67,10 @@ enum {
 	IB_USER_VERBS_EXP_CMD_CREATE_RWQ_IND_TBL,
 	IB_USER_VERBS_EXP_CMD_DESTROY_RWQ_IND_TBL,
 	IB_USER_VERBS_EXP_CMD_CREATE_FLOW,
+	IB_USER_VERBS_EXP_CMD_SET_CTX_ATTR,
+	IB_USER_VERBS_EXP_CMD_CREATE_SRQ,
+	IB_USER_VERBS_EXP_CMD_ALLOC_DM,
+	IB_USER_VERBS_EXP_CMD_FREE_DM,
 };
 
 enum {
@@ -85,6 +89,18 @@ enum {
 	IB_USER_VERBS_CMD_EXP_DESTROY_RWQ_IND_TBL =
 			IB_USER_VERBS_EXP_CMD_DESTROY_RWQ_IND_TBL +
 			IB_USER_VERBS_EXP_CMD_FIRST,
+	IB_USER_VERBS_CMD_EXP_SET_CTX_ATTR =
+			IB_USER_VERBS_EXP_CMD_SET_CTX_ATTR +
+			IB_USER_VERBS_EXP_CMD_FIRST,
+	IB_USER_VERBS_CMD_EXP_CREATE_SRQ =
+			IB_USER_VERBS_EXP_CMD_CREATE_SRQ +
+			IB_USER_VERBS_EXP_CMD_FIRST,
+	IB_USER_VERBS_CMD_EXP_ALLOC_DM =
+			IB_USER_VERBS_EXP_CMD_ALLOC_DM +
+			IB_USER_VERBS_EXP_CMD_FIRST,
+	IB_USER_VERBS_CMD_EXP_FREE_DM =
+			IB_USER_VERBS_EXP_CMD_FREE_DM +
+			IB_USER_VERBS_EXP_CMD_FIRST,
 	/*
 	 * Set commands that didn't exist to -1 so our compile-time
 	 * trick opcodes in IBV_INIT_CMD() doesn't break.
@@ -94,6 +110,10 @@ enum {
 	IB_USER_VERBS_CMD_EXP_DESTROY_WQ_V2 = -1,
 	IB_USER_VERBS_CMD_EXP_CREATE_RWQ_IND_TBL_V2 = -1,
 	IB_USER_VERBS_CMD_EXP_DESTROY_RWQ_IND_TBL_V2 = -1,
+	IB_USER_VERBS_CMD_EXP_SET_CTX_ATTR_V2 = -1,
+	IB_USER_VERBS_CMD_EXP_CREATE_SRQ_V2 = -1,
+	IB_USER_VERBS_CMD_EXP_ALLOC_DM_V2 = -1,
+	IB_USER_VERBS_CMD_EXP_FREE_DM_V2 = -1,
 };
 
 enum ibv_exp_create_qp_comp_mask {
@@ -126,7 +146,8 @@ enum ibv_exp_create_qp_kernel_flags {
 					 IBV_EXP_QP_CREATE_MANAGED_RECV   |
 					 IBV_EXP_QP_CREATE_ATOMIC_BE_REPLY |
 					 IBV_EXP_QP_CREATE_RX_END_PADDING |
-					 IBV_EXP_QP_CREATE_SCATTER_FCS
+					 IBV_EXP_QP_CREATE_SCATTER_FCS |
+					 IBV_EXP_QP_CREATE_TUNNEL_OFFLOADS
 };
 
 struct ibv_exp_create_qp {
@@ -245,6 +266,28 @@ struct ibv_exp_packet_pacing_caps_resp {
 	__u32 qp_rate_limit_min;
 	__u32 qp_rate_limit_max; /* In kbps */
 	__u32 supported_qpts;
+	__u8  cap_flags;
+	__u8  reserved[3];
+};
+
+struct ibv_exp_ooo_caps_resp {
+	__u32 rc_caps;
+	__u32 xrc_caps;
+	__u32 dc_caps;
+	__u32 ud_caps;
+};
+
+struct ibv_exp_sw_parsing_caps_resp {
+	__u32 sw_parsing_offloads;
+	__u32 supported_qpts;
+};
+
+struct ibv_exp_tm_caps_resp {
+	__u32 max_rndv_hdr_size;
+	__u32 max_num_tags;
+	__u32 capability_flags;
+	__u32 max_ops;
+	__u32 max_sge;
 	__u32 reserved;
 };
 
@@ -318,6 +361,13 @@ struct ibv_exp_query_device_resp {
 	__u8 reserved2[6];
 	struct ibv_exp_lso_caps_resp tso_caps;
 	struct ibv_exp_packet_pacing_caps_resp packet_pacing_caps;
+	struct ibv_exp_ooo_caps_resp ooo_caps;
+	struct ibv_exp_sw_parsing_caps_resp sw_parsing_caps;
+	__u64 odp_mr_max_size;
+	struct ibv_exp_tm_caps_resp tm_caps;
+	__u32    tunnel_offloads_caps;
+	__u32 tunneled_atomic_caps;
+	__u64 max_dm_size;
 };
 
 struct ibv_exp_create_dct {
@@ -401,6 +451,14 @@ struct ibv_exp_arm_dct_resp {
 	__u64	reserved;
 };
 
+struct ibv_exp_cmd_set_context_attr {
+	struct ex_hdr	hdr;
+	__u64		peer_id;
+	__u8		peer_name[64];
+	__u32		comp_mask;
+	__u32		reserved;
+};
+
 struct ibv_exp_modify_cq {
 	struct ex_hdr hdr;
 	__u32 cq_handle;
@@ -445,6 +503,11 @@ struct ibv_exp_modify_qp {
 	__u32 exp_attr_mask;
 	__u32 flow_entropy;
 	__u32 rate_limit;
+	struct {
+		__u32   max_burst_sz;
+		__u16   typical_pkt_sz;
+		__u16   reserved;
+	} burst_info;
 	__u32 reserved1;
 	__u64 driver_data[0];
 };
@@ -504,6 +567,7 @@ struct ibv_exp_query_mkey_resp {
 
 enum ibv_exp_reg_mr_comp_mask {
 	IBV_EXP_REG_MR_EXP_ACCESS_FLAGS = 1ULL << 0,
+	IBV_EXP_REG_MR_DM_HANDLE	= 1ULL << 1,
 };
 
 struct ibv_exp_reg_mr {
@@ -515,6 +579,8 @@ struct ibv_exp_reg_mr {
 	__u32 reserved;
 	__u64 exp_access_flags;
 	__u64 comp_mask;
+	__u32 dm_handle;
+	__u32 reserved1;
 };
 
 struct ibv_exp_prefetch_mr {
@@ -608,6 +674,27 @@ struct ib_exp_modify_wq  {
 	__u32 curr_wq_state;
 };
 
+struct ibv_exp_create_srq {
+	struct ex_hdr hdr;
+	__u64 comp_mask;
+	__u64 user_handle;
+	__u32 srq_type;
+	__u32 pd_handle;
+	__u32 max_wr;
+	__u32 max_sge;
+	__u32 srq_limit;
+	__u32 cq_handle;
+	__u32 xrcd_handle;
+	__u32 reserved;
+	__u64 driver_data[0];
+};
+
+struct ibv_exp_create_srq_resp {
+	struct ibv_create_srq_resp base;
+	__u32 comp_mask;
+	__u32 response_length;
+};
+
 struct ibv_exp_create_rwq_ind_table {
 	struct ex_hdr hdr;
 	__u32 comp_mask;
@@ -699,6 +786,12 @@ struct ibv_exp_kern_spec_action_tag {
 	__u32 reserved1;
 };
 
+struct ibv_exp_kern_spec_action_drop {
+	__u32  type;
+	__u16  size;
+	__u16 reserved;
+};
+
 struct ibv_exp_kern_spec {
 	union {
 		struct {
@@ -715,6 +808,31 @@ struct ibv_exp_kern_spec {
 		struct ibv_exp_kern_spec_ipv6_ext ipv6_ext;
 		struct ibv_exp_kern_spec_tunnel tunnel;
 		struct ibv_exp_kern_spec_action_tag flow_tag;
+		struct ibv_exp_kern_spec_action_drop drop;
 	};
 };
+
+struct ibv_exp_alloc_dm {
+	struct ex_hdr hdr;
+	__u32 comp_mask;
+	__u32 reserved;
+	__u64 uaddr;
+	__u64 length;
+	__u64 driver_data[0];
+};
+
+struct ibv_exp_alloc_dm_resp {
+	__u32 comp_mask;
+	__u32 response_length;
+	__u32 dm_handle;
+	__u32 reserved;
+	__u64 start_offset;
+};
+
+struct ibv_exp_free_dm {
+	struct ex_hdr hdr;
+	__u32 dm_handle;
+	__u32 reserved;
+};
+
 #endif /* KERN_ABI_EXP_H */

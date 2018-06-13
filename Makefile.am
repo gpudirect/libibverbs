@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(srcdir)/include
+AM_CPPFLAGS = -I$(srcdir)/include -DMLX_VERBS_PROVIDER_DIR=\"$(libdir)\"
 
 lib_LTLIBRARIES = src/libibverbs.la
 
@@ -23,7 +23,7 @@ src_libibverbs_la_DEPENDENCIES = $(srcdir)/src/libibverbs.map
 
 bin_PROGRAMS = examples/ibv_devices examples/ibv_devinfo \
     examples/ibv_asyncwatch examples/ibv_rc_pingpong examples/ibv_uc_pingpong \
-    examples/ibv_ud_pingpong examples/ibv_srq_pingpong examples/ibv_shared_mr \
+    examples/ibv_ud_pingpong examples/ibv_srq_pingpong  \
     examples/ibv_xsrq_pingpong examples/ibv_cc_pingpong examples/ibv_task_pingpong \
     examples/ibv_dcini examples/ibv_dctgt examples/ibv_umr examples/ibv_intf \
     examples/ibv_polldcinfo
@@ -40,8 +40,6 @@ examples_ibv_ud_pingpong_SOURCES = examples/ud_pingpong.c examples/pingpong.c
 examples_ibv_ud_pingpong_LDADD = $(top_builddir)/src/libibverbs.la
 examples_ibv_srq_pingpong_SOURCES = examples/srq_pingpong.c examples/pingpong.c
 examples_ibv_srq_pingpong_LDADD = $(top_builddir)/src/libibverbs.la
-examples_ibv_shared_mr_SOURCES = examples/shared_mr.c
-examples_ibv_shared_mr_LDADD = $(top_builddir)/src/libibverbs.la
 examples_ibv_asyncwatch_SOURCES = examples/asyncwatch.c
 examples_ibv_asyncwatch_LDADD = $(top_builddir)/src/libibverbs.la
 examples_ibv_xsrq_pingpong_SOURCES = examples/xsrq_pingpong.c examples/pingpong.c
@@ -60,48 +58,6 @@ examples_ibv_intf_SOURCES = examples/intf.c examples/get_clock.c examples/get_cl
 examples_ibv_intf_LDADD = $(top_builddir)/src/libibverbs.la
 examples_ibv_polldcinfo_SOURCES = examples/polldcinfo.c
 examples_ibv_polldcinfo_LDADD = $(top_builddir)/src/libibverbs.la
-
-
-# Enable ibverbs library test
-#
-if TEST_ENABLE
-
-# Primary ibverbs test
-#
-TESTS = ibv_test
-noinst_PROGRAMS = ibv_test
-
-ibv_test_CXXFLAGS = -g -Wall -O3 -fno-strict-aliasing
-ibv_test_CPPFLAGS = \
-	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/tests \
-	-I$(top_srcdir)/tests/cmn
-ibv_test_SOURCES = \
-	tests/cmn/gtest_cmn.h \
-	tests/gtest/gtest.h \
-	tests/api/gtest_cd.h \
-	tests/gtest_main.cc \
-	tests/cmn/gtest_cmn.cc \
-	tests/api/gtest_cd_tc1.cc \
-	tests/api/gtest_cd_tc2.cc \
-	tests/api/gtest_cd_tc3.cc \
-	tests/api/gtest_cd_tc4.cc \
-	tests/api/gtest_cd_tc5.cc \
-	tests/api/gtest_cd_tc6.cc \
-	tests/api/gtest_cd_tc7.cc \
-	tests/api/gtest_cd_tc8.cc \
-	tests/api/gtest_init.cc
-ibv_test_LDADD = \
-	$(top_builddir)/src/libibverbs.la
-
-test: ibv_test
-	rm -f core.*
-	./ibv_test
-
-valgrind: ibv_test
-	valgrind --tool=memcheck --leak-check=full --track-origins=yes ./ibv_test
-
-endif
 
 libibverbsincludedir = $(includedir)/infiniband
 
@@ -126,7 +82,6 @@ man_MANS = man/ibv_asyncwatch.1 man/ibv_devices.1 man/ibv_devinfo.1	\
     man/ibv_query_pkey.3 man/ibv_query_port.3 man/ibv_query_qp.3	\
     man/ibv_query_srq.3 man/ibv_rate_to_mult.3 man/ibv_reg_mr.3		\
     man/ibv_req_notify_cq.3 man/ibv_resize_cq.3 man/ibv_rate_to_mbps.3	\
-    man/verbs.7 man/ibv_exp_reg_shared_mr.3 man/ibv_shared_mr.1		\
     man/ibv_exp_post_task.3 man/ibv_exp_modify_cq.3			\
     man/ibv_cc_pingpong.1 man/ibv_task_pingpong.1 man/ibv_create_qp_ex.3 \
     man/ibv_create_srq_ex.3 man/ibv_open_xrcd.3 man/ibv_get_srq_num.3    \
@@ -148,17 +103,22 @@ man_MANS = man/ibv_asyncwatch.1 man/ibv_devices.1 man/ibv_devinfo.1	\
     man/ibv_exp_ec_update_async.3					\
     man/peer_direct.7 man/ibv_exp_peer_commit_qp.3			\
     man/ibv_query_device_ex.3 man/ibv_rereg_mr.3 man/ibv_bind_mw.3	\
-    man/ibv_inc_rkey.3
+    man/ibv_inc_rkey.3							\
+    man/ibv_exp_open_device.3						\
+    man/ibv_exp_create_srq.3						\
+    man/ibv_exp_post_srq_ops.3						\
+    man/ibv_exp_alloc_dm.3						\
+    man/ibv_exp_cqe_ts_to_ns.3
 
 EXTRA_DIST = include/infiniband/driver.h include/infiniband/kern-abi.h \
     include/infiniband/opcode.h include/infiniband/verbs.h include/infiniband/marshall.h \
     include/infiniband/sa-kern-abi.h include/infiniband/sa.h \
     src/ibverbs.h \
-    tests/gtest/gtest-all.cc \
     examples/pingpong.h examples/cc_pingpong.h \
     src/libibverbs.map libibverbs.spec.in $(man_MANS)
 EXTRA_DIST += debian
 EXTRA_DIST += autogen.sh
+EXTRA_DIST += util/util.h
 
 
 dist-hook: libibverbs.spec
@@ -196,6 +156,8 @@ install-data-hook:
 	$(RM) ibv_exp_rollback_qp.3 && \
 	$(RM) ibv_exp_peer_peek_cq.3 && \
 	$(RM) ibv_exp_peer_abort_peek_cq.3 && \
+	$(RM) ibv_exp_free_dm.3 && \
+	$(RM) ibv_exp_memcpy_dm.3 && \
 	$(LN_S) ibv_get_async_event.3 ibv_ack_async_event.3 && \
 	$(LN_S) ibv_get_cq_event.3 ibv_ack_cq_events.3 && \
 	$(LN_S) ibv_open_device.3 ibv_close_device.3 && \
@@ -225,4 +187,6 @@ install-data-hook:
 	$(LN_S) ibv_exp_ec_update_async.3 ibv_exp_ec_update_sync.3 && \
 	$(LN_S) ibv_exp_peer_commit_qp.3 ibv_exp_rollback_qp.3 && \
 	$(LN_S) ibv_exp_peer_commit_qp.3 ibv_exp_peer_peek_cq.3 && \
+	$(LN_S) ibv_exp_alloc_dm.3 ibv_exp_free_dm.3 && \
+	$(LN_S) ibv_exp_alloc_dm.3 ibv_exp_memcpy_dm.3 && \
 	$(LN_S) ibv_exp_peer_commit_qp.3 ibv_exp_peer_abort_peek_cq.3

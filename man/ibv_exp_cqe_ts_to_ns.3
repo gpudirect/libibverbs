@@ -1,0 +1,30 @@
+.\" -*- nroff -*-
+.\"
+.TH IBV_EXP_CQE_TS_TO_NS 3 2017-05-25 libibverbs "Libibverbs Programmer's Manual"
+.SH "NAME"
+ibv_exp_cqe_to_ns \- translate hw timestamp to nano-seconds
+.SH "SYNOPSIS"
+.nf
+.B #include <infiniband/verbs_exp.h>
+.sp
+.BI "static inline uint64_t ibv_exp_cqe_ts_to_ns(struct ibv_exp_clock_info " "*clock_info" ",
+.BI "                                            uint64_t " "ts");
+.fi
+.SH "DESCRIPTION"
+.B ibv_exp_cqe_ts_to_ns()
+translates the HW timestamp value in \fBts\fR to nano-seconds using the provided translation
+object \fBclock_info\fR. See \fBibv_exp_query_values\fR for details how to create a
+translation object.
+.SH "RETURN VALUE"
+.B ibv_exp_cqe_ts_to_ns()
+returns ts translated to nano-seconds, or 0 on error (errno will contain the
+error value).
+.SH "NOTES"
+While the implementation may vary from hardware to hardware it is recommended to update the
+clock_info object at least once a second prior to its use in order to improve the accuracy
+of the translation.
+.SH "SEE ALSO"
+.BR ibv_exp_query_values (3),
+.SH "AUTHORS"
+.TP
+Eitan Rabin <rabin@mellanox.com>

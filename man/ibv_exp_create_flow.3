@@ -68,6 +68,7 @@ IBV_EXP_FLOW_SPEC_UDP			= 0x41,   /* Flow specification of UDP header */
 IBV_EXP_FLOW_SPEC_VXLAN_TUNNEL	= 0x50,   /* Flow specification for VxLAN header */
 IBV_EXP_FLOW_SPEC_INNER			= 0x100,  /* Used to filter the inner packet fields, should be set with other spec from above */
 IBV_EXP_FLOW_SPEC_ACTION_TAG		= 0x1000, /* When there is a matching, the flow tag will be reported in the CQE */
+IBV_EXP_FLOW_SPEC_ACTION_DROP		= 0x1001, /* When there is a matching, the packet will be dropped */
 .in -8
 };
 .br

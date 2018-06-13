@@ -48,6 +48,7 @@
 #include <dirent.h>
 #include <errno.h>
 
+#include <util/util.h>
 #include "ibverbs.h"
 
 HIDDEN int abi_ver;
@@ -89,8 +90,9 @@ static int find_sysfs_devs(void)
 	char value[8];
 	int ret = 0;
 
-	snprintf(class_path, sizeof class_path, "%s/class/infiniband_verbs",
-		 ibv_get_sysfs_path());
+	if (!check_snprintf(class_path, sizeof(class_path),
+			    "%s/class/infiniband_verbs", ibv_get_sysfs_path()))
+		return ENOMEM;
 
 	class_dir = opendir(class_path);
 	if (!class_dir)
@@ -109,8 +111,9 @@ static int find_sysfs_devs(void)
 			goto out;
 		}
 
-		snprintf(sysfs_dev->sysfs_path, sizeof sysfs_dev->sysfs_path,
-			 "%s/%s", class_path, dent->d_name);
+		if (!check_snprintf(sysfs_dev->sysfs_path, sizeof sysfs_dev->sysfs_path,
+				    "%s/%s", class_path, dent->d_name))
+			continue;
 
 		if (stat(sysfs_dev->sysfs_path, &buf)) {
 			fprintf(stderr, PFX "Warning: couldn't stat '%s'.\n",
@@ -121,8 +124,9 @@ static int find_sysfs_devs(void)
 		if (!S_ISDIR(buf.st_mode))
 			continue;
 
-		snprintf(sysfs_dev->sysfs_name, sizeof sysfs_dev->sysfs_name,
-			"%s", dent->d_name);
+		if (!check_snprintf(sysfs_dev->sysfs_name, sizeof sysfs_dev->sysfs_name,
+				    "%s", dent->d_name))
+			continue;
 
 		if (ibv_read_sysfs_file(sysfs_dev->sysfs_path, "ibdev",
 					sysfs_dev->ibdev_name,
@@ -132,9 +136,11 @@ static int find_sysfs_devs(void)
 			continue;
 		}
 
-		snprintf(sysfs_dev->ibdev_path, sizeof sysfs_dev->ibdev_path,
-			 "%s/class/infiniband/%s", ibv_get_sysfs_path(),
-			 sysfs_dev->ibdev_name);
+		if (!check_snprintf(
+			sysfs_dev->ibdev_path, sizeof(sysfs_dev->ibdev_path),
+			"%s/class/infiniband/%s", ibv_get_sysfs_path(),
+			sysfs_dev->ibdev_name))
+			continue;
 
 		sysfs_dev->next        = sysfs_dev_list;
 		sysfs_dev->have_driver = 0;
@@ -195,30 +201,68 @@ void verbs_register_driver(const char *name, verbs_driver_init_func init_func)
 static void load_driver(const char *name)
 {
 	char *so_name;
+	char *error;
 	void *dlhandle;
 
 #define __IBV_QUOTE(x)	#x
 #define IBV_QUOTE(x)	__IBV_QUOTE(x)
 
-	if (asprintf(&so_name,
-		     name[0] == '/' ?
-		     "%s-" IBV_QUOTE(IBV_DEVICE_LIBRARY_EXTENSION) ".so" :
-		     "lib%s-" IBV_QUOTE(IBV_DEVICE_LIBRARY_EXTENSION) ".so",
-		     name) < 0) {
-		fprintf(stderr, PFX "Warning: couldn't load driver '%s'.\n",
-			name);
+	/* If the name is an absolute path */
+	if (name[0] == '/') {
+		if (asprintf(&so_name,
+			     "%s-" IBV_QUOTE(IBV_DEVICE_LIBRARY_EXTENSION) ".so",
+			     name) < 0)
+			goto out_asprintf;
+		dlhandle = dlopen(so_name, RTLD_NOW);
+		free(so_name);
+		if (!dlhandle) {
+			/* in case of full path load failure, exit with error */
+			if (asprintf(&error, "%s", dlerror()) < 0)
+				goto out_asprintf;
+			goto out_dlopen;
+		}
 		return;
 	}
 
+	/* First try to use the system library search path as usual */
+	if (asprintf(&so_name,
+		     "lib%s-" IBV_QUOTE(IBV_DEVICE_LIBRARY_EXTENSION) ".so",
+		     name) < 0)
+		goto out_asprintf;
 	dlhandle = dlopen(so_name, RTLD_NOW);
-	if (!dlhandle) {
-		fprintf(stderr, PFX "Warning: couldn't load driver '%s': %s\n",
-			name, dlerror());
-		goto out;
+	free(so_name);
+	if (dlhandle)
+		return;
+	if (asprintf(&error, "%s", dlerror()) < 0)
+		goto out_asprintf;
+
+	/* If we got here, it means that name is not full path, and loading using
+	 * system path searches failed, do not exit yet with error, try the installation
+	 * libdir where the providers will be (we use same libdir for building
+	 * libibverbs and the providers)
+	 */
+	if (sizeof(MLX_VERBS_PROVIDER_DIR) > 1) {
+		if (asprintf(&so_name,
+			     MLX_VERBS_PROVIDER_DIR "/lib%s-" IBV_QUOTE(IBV_DEVICE_LIBRARY_EXTENSION) ".so",
+			     name) < 0)
+			goto out_asprintf;
+		dlhandle = dlopen(so_name, RTLD_NOW);
+		free(so_name);
+		if (dlhandle)
+			return;
 	}
 
-out:
-	free(so_name);
+	/* Failed to load it from all possible paths, display original error */
+	goto out_dlopen;
+
+out_asprintf:
+	fprintf(stderr, PFX "Warning: couldn't load driver '%s'.\n", name);
+	return;
+out_dlopen:
+	fprintf(stderr, PFX "Warning: couldn't load driver '%s': %s\n", name,
+		error);
+	free(error);
+	return;
 }
 
 static void load_drivers(void)

@@ -104,6 +104,9 @@ The argument is either 0 or the bitwise OR of one or more of the following flags
 .B IBV_QP_CAP \fR Set cap
 .TP
 .B IBV_QP_DEST_QPN \fR Set dest_qp_num
+.TP
+.B IBV_EXP_QP_OOO_RW_DATA_PLACEMENT \fR Enable out of order data placement for RDMA read write operations, valid during QP state transision from INIT to RTR, applicable for RC, XRC, DC QPs only.
+
 .SH "RETURN VALUE"
 .B ibv_modify_qp()
 returns 0 on success, or the value of errno on failure (which indicates the failure reason).

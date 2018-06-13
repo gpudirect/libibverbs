@@ -208,6 +208,7 @@ enum ibv_exp_cq_family_flags {
 	/* Flags supported from CQ family version 1 */
 	/* Multi-Packet RQ flag */
 	IBV_EXP_CQ_RX_MULTI_PACKET_LAST_V1	= 1 << 9, /* Last packet on WR */
+	IBV_EXP_CQ_RX_WITH_TIMESTAMP		= 1 << 13, /* The returned timestamp value is valid */
 };
 
 /* All functions of CQ family included in CQ family version 1 */
@@ -275,6 +276,63 @@ struct ibv_exp_cq_family_v1 {
 	 *  - Also retrieves packet-offset (for multi-packet RQ).
 	 */
 	int32_t (*poll_length_flags_mp_rq)(struct ibv_cq *cq, uint32_t *offset, uint32_t *flags);
+	/*
+	 * poll_length_flags_ts - Poll one receive completion and provide the
+	 *                        related message length, completion flag and HW timestamp.
+	 *                        The HW timestamp is valid only when the
+	 *                        IBV_EXP_CQ_RX_WITH_TIMESTAMP flag is set.
+	 *
+	 * The same as poll_length_flags but:
+	 *  - Also retrievs the packet's RX HW timestamp from the work completion.
+	 */
+	int32_t (*poll_length_flags_ts)(struct ibv_cq *cq, void *buf,
+					uint32_t *inl, uint32_t *flags,
+					uint64_t *timestamp);
+	/*
+	 * poll_length_flags_mp_rq_ts - Poll one receive completion and provide
+	 *                              the related message length, packet-offset,
+	 *                              completion flags and HW timestamp.
+	 *
+	 * The same as poll_length_flags_ts but:
+	 *  - Without the inline-receive support.
+	 *  - Also retrives offset in the WR posted buffer as defined by the
+	 *    WR SG list. The start of the received packet is located in this
+	 *    offset.
+	 */
+	int32_t (*poll_length_flags_mp_rq_ts)(struct ibv_cq *cq,
+					      uint32_t *offset,
+					      uint32_t *flags,
+					      uint64_t *timestamp);
+	/*
+	 * poll_length_flags_cvlan_ts - Poll one receive completion and provide the
+	 *                              related message length, completion flags,
+	 *                              CVLAN TCI and HW timestamp.
+	 *                              The HW timestamp is valid only when the
+	 *                              IBV_EXP_CQ_RX_WITH_TIMESTAMP flag is set.
+	 *
+	 * The same as poll_length_flags_cvlan but:
+	 *  - Also retrievs the packet's RX HW timestamp from the work completion.
+	 */
+	int32_t (*poll_length_flags_cvlan_ts)(struct ibv_cq *cq, void *buf,
+					      uint32_t *inl, uint32_t *flags,
+					      uint16_t *vlan_tci,
+					      uint64_t *timestamp);
+	/*
+	 * poll_length_flags_mp_rq_cvlan_ts - Poll one receive completion and provide
+	 *                                    the related message length, packet-offset,
+	 *                                    completion flags, CVLAN TCI and HW timestamp.
+	 *
+	 * The same as poll_length_flags_cvlan_ts but:
+	 *  - Without the inline-receive support.
+	 *  - Also retrives offset in the WR posted buffer as defined by the
+	 *    WR SG list. The start of the received packet is located in this
+	 *    offset.
+	 */
+	int32_t (*poll_length_flags_mp_rq_cvlan_ts)(struct ibv_cq *cq,
+						    uint32_t *offset,
+						    uint32_t *flags,
+						    uint16_t *vlan_tci,
+						    uint64_t *timestamp);
 };
 .fi
 

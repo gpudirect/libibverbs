@@ -125,6 +125,12 @@ int ibv_exp_cmd_create_rwq_ind_table(struct ibv_context *context,
 				     size_t resp_core_size,
 				     size_t resp_size);
 int ibv_exp_cmd_destroy_rwq_ind_table(struct ibv_exp_rwq_ind_table *rwq_ind_table);
+int ibv_exp_cmd_create_srq(struct ibv_context *context, struct verbs_srq *srq,
+			   struct ibv_exp_create_srq_attr *attr,
+			   struct ibv_exp_create_srq *cmd,
+			   size_t cmd_core_size, size_t cmd_size,
+			   struct ibv_exp_create_srq_resp *resp,
+			   size_t resp_core_size, size_t resp_size);
 /*
  * ibv_exp_cmd_getenv
  *
@@ -140,5 +146,19 @@ int ibv_exp_cmd_destroy_rwq_ind_table(struct ibv_exp_rwq_ind_table *rwq_ind_tabl
 int ibv_exp_cmd_getenv(struct ibv_context *context,
 		       const char *name, char *value, size_t n);
 
+int ibv_exp_cmd_set_context_attr(struct ibv_context *context,
+				 struct ibv_exp_open_device_attr *attr,
+				 struct ibv_exp_cmd_set_context_attr *cmd,
+				 size_t cmd_size);
+int ibv_exp_cmd_alloc_dm(struct ibv_context *context,
+			 struct ibv_exp_alloc_dm_attr *attr,
+			 struct ibv_exp_dm *dm, void *start_addr,
+			 struct ibv_exp_alloc_dm *cmd,
+			 size_t cmd_core_size,
+			 size_t cmd_size,
+			 struct ibv_exp_alloc_dm_resp *resp,
+			 size_t resp_core_size,
+			 size_t resp_size);
+int ibv_exp_cmd_free_dm(struct ibv_exp_dm *dm);
 
 #endif /* INFINIBAND_DRIVER_EXP_H */

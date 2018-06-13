@@ -74,6 +74,7 @@ struct dc_ctx {
 	int			thread_active;
 	int			inl;
 	pthread_t		poll_thread;
+	int			use_ooo;
 };
 
 static void usage(const char *argv0)
@@ -91,6 +92,7 @@ static void usage(const char *argv0)
 	printf("  -c, --contiguous-mr    use contiguous mr\n");
 	printf("  -k, --dc-key           DC transport key\n");
 	printf("  -m, --mtu              MTU of the DCT\n");
+	printf("  -b, --ooo              enable out of order processing\n");
 	printf("  -l, --inline           Requested inline receive size\n");
 }
 
@@ -321,10 +323,12 @@ int main(int argc, char *argv[])
 			{ .name = "dc-key",     .has_arg = 1, .val = 'k' },
 			{ .name = "mtu",	.has_arg = 1, .val = 'm' },
 			{ .name = "inline",	.has_arg = 1, .val = 'l' },
+			{ .name = "ooo",  .has_arg = 0, .val = 'b' },
 			{ 0 }
 		};
 
-		c = getopt_long(argc, argv, "p:d:i:s:n:ek:m:l:", long_options, NULL);
+		c = getopt_long(argc, argv, "p:d:i:s:n:ebk:m:l:",
+				long_options, NULL);
 		if (c == -1)
 			break;
 
@@ -379,6 +383,10 @@ int main(int argc, char *argv[])
 
 		case 'k':
 			ctx.dct_key = strtoull(optarg, NULL, 0);
+			break;
+
+		case 'b':
+			ctx.use_ooo = 1;
 			break;
 
 		default:
@@ -465,7 +473,8 @@ int main(int argc, char *argv[])
 	}
 
 	ctx.mr = ibv_reg_mr(ctx.pd, ctx.addr, ctx.length,
-			IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE);
+			IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE |
+			IBV_ACCESS_REMOTE_READ);
 	if (!ctx.mr) {
 		fprintf(stderr, "failed to create mr\n");
 		return -1;
@@ -518,6 +527,8 @@ int main(int argc, char *argv[])
 			.create_flags = 0,
 			.inline_size = ctx.inl,
 		};
+		dctattr.create_flags |=
+			ctx.use_ooo ? IBV_EXP_DCT_OOO_RW_DATA_PLACEMENT : 0;
 
 		ctx.dct = ibv_exp_create_dct(ctx.ctx, &dctattr);
 		if (!ctx.dct) {
@@ -544,8 +555,9 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		printf("local address: DCTN 0x%06x, SRQN 0x%06x, DCKEY 0x%016llx\n",
-		       ctx.dct->dct_num, srqn, (unsigned long long)ctx.dct_key);
+		printf("local address: DCTN 0x%06x, SRQN 0x%06x, DCKEY 0x%016llx MR KEY %d MR ADDR %p\n",
+		       ctx.dct->dct_num, srqn, (unsigned long long)ctx.dct_key,
+		       ctx.mr->rkey, ctx.addr);
 	}
 
 	if (ibv_query_port(ctx.ctx, ctx.ib_port, &ctx.portinfo)) {

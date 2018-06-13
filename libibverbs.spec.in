@@ -11,7 +11,7 @@
 ###
 
 Name: libibverbs
-Version: 1.2.1mlnx1
+Version: 41mlnx1
 Release: 1%{?dist}
 Summary: A library for direct userspace use of RDMA (InfiniBand/iWARP) hardware
 

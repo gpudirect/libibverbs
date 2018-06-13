@@ -1,4 +1,10 @@
-libibverbs (1.2.1mlnx1-OFED.4.0.1.5.3) unstable; urgency=low
+libibverbs (41mlnx1-OFED.4.3.0.1.8) unstable; urgency=low
+
+  * Roll 41mlnx1-1
+
+ -- Alaa Hleihel <alaa@mellanox.com>  Sun, 07 May 2017 18:03:10 +0200
+
+libibverbs (1.2.1mlnx1-1) unstable; urgency=low
 
   * Roll 1.2.1mlnx1-1
 

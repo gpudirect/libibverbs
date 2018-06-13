@@ -38,7 +38,7 @@ int                     max_cq;                 /* Maximum number of supported C
 int                     max_cqe;                /* Maximum number of CQE capacity per CQ */
 int                     max_mr;                 /* Maximum number of supported MRs */
 int                     max_pd;                 /* Maximum number of supported PDs */
-int                     max_qp_rd_atom;         /* Maximum number of RDMA Read & Atomic operations that can be outstanding per QP */
+nt                     max_qp_rd_atom;         /* Maximum number of RDMA Read & Atomic operations that can be outstanding per QP */
 int                     max_ee_rd_atom;         /* Maximum number of RDMA Read & Atomic operations that can be outstanding per EEC */
 int                     max_res_rd_atom;        /* Maximum number of resources used for RDMA Read & Atomic operations by this HCA as the Target */
 int                     max_qp_init_rd_atom;    /* Maximum depth per QP for initiation of RDMA Read & Atomic operations */
@@ -82,6 +82,9 @@ int                         max_device_ctx;     /* Maximum device contexts */
 struct ibv_exp_mp_rq_caps   mp_rq_caps;         /* Multi-Packet Receive Queue(RQ) capabilities */
 uint16_t                wq_vlan_offloads_cap;   /* VLAN offloads capabilities */
 struct ibv_tso_caps    tso_caps;                   /* TCP segmentation offload capabilities */
+uint64_t               odp_mar_max_size;	   /* Max supported ODP MR size */
+uint64_t 		max_dm_size;		/* Device Memory available for allocation */
+uint32_t               tunneled_atomic_caps;    /* Tunneled atomic capability, operation is supported if IBV_EXP_TUNNELED_ATOMIC_SUPPORTED is set */
 .in -8
 };
 
@@ -126,7 +129,7 @@ uint32_t                supported_qps;                  /* Mask with enum ibv_ex
 
 struct ibv_exp_mp_rq_caps {
 .in +8
-uint32_t                supported_qps;                      /* Mask with enum ibv_exp_supported_qp_types to know which QP types support MP RQ */
+uint32_t                supported_qps;                      /* Mask with enum ibv_exp_mp_rq_sup_types to know which object types support MP RQ */
 uint32_t                allowed_shifts;                     /* Mask with enum ibv_exp_mp_rq_shifts to know which payload shifts are supported */
 uint8_t                 min_single_wqe_log_num_of_strides;  /* Log of minimum number of strides for single WQE */
 uint8_t                 max_single_wqe_log_num_of_strides;  /* Log of maximum number of strides for single WQE */
@@ -148,6 +151,22 @@ struct ibv_tso_caps {
 .in +8
 uint32_t max_tso;        /* Maximum payload size in bytes supported for segmentation by TSO engine.*/
 uint32_t supported_qpts; /* Bitmap showing which QP types are supported by TSO operation. */
+.in -8
+};
+
+enum ibv_exp_packet_pacing_cap_flags {
+.in +8
+IBV_EXP_QP_SUPPORT_BURST = 1 << 0, /* Device support burst control configuration */
+.in -8
+};
+
+struct ibv_exp_packet_pacing_caps {
+.in +8
+uint32_t qp_rate_limit_min; /* Minimum rate limit in kbps */
+uint32_t qp_rate_limit_max; /* Maximum rate limit in kbps */
+uint32_t supported_qpts;  /* Bitmap showing which QP types are supported. */
+uint8_t  cap_flags; /* ibv_exp_packet_pacing_cap_flags  */
+uint8_t  reserved[3];
 .in -8
 };
 
@@ -174,3 +193,5 @@ Majd Dibbiny <majd@mellanox.com>
 Moshe Lazer <moshel@mellanox.com>
 .TP
 Noa Osherovich <noaos@mellanox.com>
+.TP
+Guy Levi <guyle@mellanox.com>

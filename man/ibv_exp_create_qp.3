@@ -40,9 +40,10 @@ uint32_t                max_inl_send_klms;/* Request Maximum number of KLMs when
 struct ibv_exp_res_domain *res_domain;    /* Provides resource domain to indicate the QP threading and message model */
 struct ibv_exp_rx_hash_conf *rx_hash_conf;/* RX hash configuration used for RSS */
 uint8_t                      port_num;    /* Port number to be associated with, applicable only to RX QP */
-                                          /* Create QP with Peer-direct sync support */
+                                          /* Create QP with Peer-direct async support */
 struct ibv_exp_peer_direct_attr *peer_direct_attrs;
 uint16_t                max_tso_header;   /* Maximum TSO header size */
+uint32_t                associated_qpn;   /* QPN to be associated with */
 .in -8
 };
 .sp

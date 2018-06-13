@@ -72,7 +72,15 @@ struct dc_ctx {
 	uint16_t		gid_index;
 	int			use_gid;
 	union ibv_gid		dgid;
+	int			use_ooo;
+	int			remote_key_defined;
+	uint32_t		rkey;
+	uint64_t		raddr;
 };
+
+#define DC_SEND_TEST 	1
+#define DC_READ_TEST	2
+#define DC_WRITE_TEST	3
 
 static void usage(const char *argv0)
 {
@@ -92,6 +100,9 @@ static void usage(const char *argv0)
 	printf("  -a, --check-nop        check NOP opcode\n");
 	printf("  -g, --gid-index        gid index\n");
 	printf("  -r, --dgid             remote gid. must be given if -g is used\n");
+	printf("  -b, --ooo              enable out of order processing\n");
+	printf("  -K, --remote-key       remote RDMA key\n");
+	printf("  -A, --remote-addr      remote RDMA address\n");
 	printf("  -l, --sl               service level\n");
 }
 
@@ -140,6 +151,7 @@ static int to_rts(struct dc_ctx *ctx)
 		.qp_access_flags = 0,
 		.dct_key = ctx->dct_key,
 	};
+	enum ibv_exp_qp_attr_mask attr_mask;
 
 	if (ibv_exp_modify_qp(ctx->qp, &attr,
 			      IBV_EXP_QP_STATE		|
@@ -154,6 +166,10 @@ static int to_rts(struct dc_ctx *ctx)
 	attr.max_dest_rd_atomic	= 0;
 	attr.path_mtu		= ctx->mtu;
 	attr.ah_attr.is_global	= !!ctx->use_gid;
+	attr_mask = IBV_EXP_QP_STATE | IBV_EXP_QP_PATH_MTU |
+		    IBV_EXP_QP_AV;
+	attr_mask |= ctx->use_ooo ? IBV_EXP_QP_OOO_RW_DATA_PLACEMENT : 0;
+
 	if (ctx->use_gid) {
 		attr.ah_attr.grh.sgid_index = ctx->gid_index;
 		attr.ah_attr.grh.hop_limit = 1;
@@ -165,9 +181,7 @@ static int to_rts(struct dc_ctx *ctx)
 	attr.ah_attr.sl		= ctx->sl;
 	attr.dct_key		= ctx->dct_key;
 
-	if (ibv_exp_modify_qp(ctx->qp, &attr, IBV_EXP_QP_STATE			|
-					      IBV_EXP_QP_PATH_MTU		|
-					      IBV_EXP_QP_AV)) {
+	if (ibv_exp_modify_qp(ctx->qp, &attr, attr_mask)) {
 		fprintf(stderr, "Failed to modify QP to RTR\n");
 		return 1;
 	}
@@ -260,6 +274,77 @@ out:
 	return err;
 }
 
+static int run_send_rdma_test(struct dc_ctx *ctx, int iters, int test_type)
+{
+	struct ibv_exp_send_wr wr;
+	struct ibv_exp_send_wr *bad_wr;
+	struct ibv_sge	sg_list;
+	int err, i;
+	int poll_cnt = 0;
+
+	for (i = 0; i < iters; ++i) {
+		memset(&wr, 0, sizeof(wr));
+		wr.num_sge = 1;
+		wr.exp_send_flags = IBV_EXP_SEND_SIGNALED;
+		sg_list.addr = (uint64_t)(unsigned long)ctx->addr;
+		sg_list.length = ctx->length;
+		sg_list.lkey = ctx->mr->lkey;
+		wr.sg_list = &sg_list;
+		wr.dc.ah = ctx->ah;
+		wr.dc.dct_access_key = ctx->dct_key;
+		wr.dc.dct_number = ctx->dct_number;
+
+		if (test_type == DC_SEND_TEST) {
+			wr.exp_opcode = IBV_EXP_WR_SEND;
+		} else {
+			wr.wr.rdma.rkey = ctx->rkey;
+			wr.wr.rdma.remote_addr = ctx->raddr;
+
+			if (test_type == DC_WRITE_TEST)
+				wr.exp_opcode = IBV_EXP_WR_RDMA_WRITE;
+			else
+				wr.exp_opcode = IBV_EXP_WR_RDMA_READ;
+		}
+		err = ibv_exp_post_send(ctx->qp, &wr, &bad_wr);
+		if (err) {
+			fprintf(stderr, "failed to post send request\n");
+			goto done;
+		} else {
+			int num;
+			struct ibv_wc wc;
+
+			do {
+				num = ibv_poll_cq(ctx->cq, 1, &wc);
+				if (num < 0) {
+					fprintf(stderr, "failed to poll cq\n");
+					err = -1;
+					goto done;
+				} else if (num) {
+					poll_cnt++;
+				}
+			} while (!num);
+			if (wc.status != IBV_WC_SUCCESS) {
+				fprintf(stderr, "completion with error %d\n",
+					wc.status);
+				return -1;
+			}
+		}
+	}
+	switch (test_type) {
+	case DC_SEND_TEST:
+		printf("send test completed successfully %d.\n", poll_cnt);
+		break;
+	case DC_READ_TEST:
+		printf("read test completed successfully %d.\n", poll_cnt);
+		break;
+	case DC_WRITE_TEST:
+		printf("write test completed successfully %d.\n", poll_cnt);
+		break;
+	};
+done:
+	return err;
+}
+
 int main(int argc, char *argv[])
 {
 	struct ibv_device	**dev_list;
@@ -277,10 +362,7 @@ int main(int argc, char *argv[])
 		.mtu		= IBV_MTU_2048,
 		.sl		= 0,
 	};
-	struct ibv_exp_send_wr wr;
-	struct ibv_exp_send_wr *bad_wr;
-	struct ibv_sge	sg_list;
-	int i;
+	int ret;
 	char                    *servername = NULL;
 	enum ibv_mtu		mtu;
 	int			check_nop = 0;
@@ -305,10 +387,14 @@ int main(int argc, char *argv[])
 			{ .name = "sl",		.has_arg = 1, .val = 'l' },
 			{ .name = "gid-index",  .has_arg = 1, .val = 'g' },
 			{ .name = "dgid",       .has_arg = 1, .val = 'r' },
+			{ .name = "ooo",        .has_arg = 0, .val = 'b' },
+			{ .name = "remote addr",
+						.has_arg = 1, .val = 'A' },
+			{ .name = "remote key",	.has_arg = 1, .val = 'K' },
 			{ 0 }
 		};
 
-		c = getopt_long(argc, argv, "p:d:i:s:n:ect:k:m:al:g:r:",
+		c = getopt_long(argc, argv, "p:d:i:s:n:ecbt:k:m:al:g:r:A:K:",
 				long_options, NULL);
 		if (c == -1)
 			break;
@@ -384,6 +470,17 @@ int main(int argc, char *argv[])
 			dgid_given = 1;
 			break;
 
+		case 'b':
+			ctx.use_ooo = 1;
+			break;
+
+		case 'K':
+			ctx.rkey = strtol(optarg, NULL, 0);
+			ctx.remote_key_defined = 1;
+			break;
+		case 'A':
+			ctx.raddr = strtoull(optarg, NULL, 0);
+			break;
 		default:
 			usage(argv[0]);
 			return 1;
@@ -524,41 +621,25 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	for (i = 0; i < iters; ++i) {
-		memset(&wr, 0, sizeof(wr));
-		wr.num_sge = 1;
-		wr.exp_opcode = IBV_EXP_WR_SEND;
-		wr.exp_send_flags = IBV_EXP_SEND_SIGNALED;
-		sg_list.addr = (uint64_t)(unsigned long)ctx.addr;
-		sg_list.length = ctx.length;
-		sg_list.lkey = ctx.mr->lkey;
-		wr.sg_list = &sg_list;
-		wr.dc.ah = ctx.ah;
-		wr.dc.dct_access_key = ctx.dct_key;
-		wr.dc.dct_number = ctx.dct_number;
+	ret = run_send_rdma_test(&ctx, iters, DC_SEND_TEST);
+	if (ret) {
+		fprintf(stderr, "write test failed with error = %d\n", ret);
+		return -1;
+	}
 
-		err = ibv_exp_post_send(ctx.qp, &wr, &bad_wr);
-		if (err) {
-			fprintf(stderr, "failed to post send request\n");
+	if (ctx.remote_key_defined && ctx.raddr) {
+		ret = run_send_rdma_test(&ctx, iters, DC_WRITE_TEST);
+		if (ret) {
+			fprintf(stderr, "write test failed error = %d\n", ret);
 			return -1;
-		} else {
-			int num;
-			struct ibv_wc wc;
+		}
 
-			do {
-				num = ibv_poll_cq(ctx.cq, 1, &wc);
-				if (num < 0) {
-					fprintf(stderr, "failed to poll cq\n");
-					return -1;
-				}
-			} while (!num);
-			if (wc.status != IBV_WC_SUCCESS) {
-				fprintf(stderr, "completion with error %d\n", wc.status);
-				return -1;
-			}
+		ret = run_send_rdma_test(&ctx, iters, DC_READ_TEST);
+		if (ret) {
+			fprintf(stderr, "read test failed error = %d\n", ret);
+			return -1;
 		}
 	}
 	printf("test finished successfully\n");
-
 	return 0;
 }

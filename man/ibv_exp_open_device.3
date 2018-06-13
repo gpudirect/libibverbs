@@ -1,0 +1,73 @@
+.\" -*- nroff -*-
+.\"
+.TH IBV_EXP_OPEN_DEVICE 3 2017-04-27 libibverbs "Libibverbs Programmer's Manual"
+.SH "NAME"
+ibv_exp_open_device \- open an RDMA device context
+.SH "SYNOPSIS"
+.nf
+.B #include <infiniband/verbs_exp.h>
+.sp
+.BI "struct ibv_context *ibv_exp_open_device(struct ibv_device " "*device" ",
+.BI "                                        struct ibv_exp_open_device_attr " "*attr");
+.sp
+.fi
+.SH "DESCRIPTION"
+.fi
+.B ibv_exp_open_device()
+opens the device
+.I device
+and creates a context with the specified
+.I attr
+
+The argument
+.I attr
+is an ibv_exp_open_device_attr struct, as defined in <infiniband/verbs_exp.h>.
+.nf
+struct ibv_exp_open_device_attr {
+.in +8
+.fi
+uint32_t                  comp_mask;   /* Identifies valid fields. Use enum ibv_exp_set_context_attr */
+.nf
+struct exp_peer_info      peer_info;   /* Provides peer information - name , id */
+.in -8
+};
+
+.fi
+.I attr->comp_mask
+specifies the attribute computability, as defined in ibv_exp_set_context_attr enum:
+.nf
+enum ibv_exp_set_context_attr{
+.in +8
+IBV_EXP_SET_ATTR_PEER_INFO              = 1 << 0, /* Set if attr->peer_info is valid */
+IBV_EXP_SET_CONTEXT_ATTR_RESERVED       = 1 << 1,
+.in -8
+};
+
+.fi
+.I attr->peer_info
+specifies the peer name and id.
+.nf
+struct exp_peer_info {
+.in +8
+.fi
+uint64_t                  peer_id;   /* Peer client unique identity */
+.nf
+char                     *peer_name; /* Peer client name */
+.in -8
+};
+
+.SH "RETURN VALUE"
+.B ibv_exp_open_device()
+returns a pointer to the allocated device context, or NULL if the request fails.
+.PP
+.SH "SEE ALSO"
+.BR ibv_open_device (3),
+.BR ibv_close_device (3),
+.BR ibv_get_device_list (3),
+.BR ibv_query_device (3),
+.BR ibv_query_port (3),
+.BR ibv_query_gid (3),
+.BR ibv_query_pkey (3)
+.SH "AUTHORS"
+.TP
+Feras Daoud <ferasda@mellanox.com>

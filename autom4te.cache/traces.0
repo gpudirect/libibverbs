@@ -2878,23 +2878,14 @@ m4trace:configure.ac:17: -1- _LT_COMPILER_OPTION([if $compiler PIC flag $_LT_TAG
 m4trace:configure.ac:17: -1- _LT_LINKER_OPTION([if $compiler static flag $lt_tmp_static_flag works], [lt_cv_prog_compiler_static_works_CXX], [$lt_tmp_static_flag], [], [_LT_TAGVAR(lt_prog_compiler_static, CXX)=])
 m4trace:configure.ac:17: -1- m4_pattern_allow([^LT_SYS_LIBRARY_PATH$])
 m4trace:configure.ac:19: -1- LT_INIT
-m4trace:configure.ac:24: -1- _m4_warn([obsolete], [The macro `AC_HELP_STRING' is obsolete.
+m4trace:configure.ac:25: -2- _m4_warn([obsolete], [The macro `AC_HELP_STRING' is obsolete.
 You should run autoupdate.], [../../lib/autoconf/general.m4:207: AC_HELP_STRING is expanded from...
-../../lib/autoconf/general.m4:1473: AC_ARG_ENABLE is expanded from...
-configure.ac:24: the top level])
-m4trace:configure.ac:30: -1- AM_CONDITIONAL([TEST_ENABLE], [test x$enable_test = xyes])
-m4trace:configure.ac:30: -1- m4_pattern_allow([^TEST_ENABLE_TRUE$])
-m4trace:configure.ac:30: -1- m4_pattern_allow([^TEST_ENABLE_FALSE$])
-m4trace:configure.ac:30: -1- _AM_SUBST_NOTMAKE([TEST_ENABLE_TRUE])
-m4trace:configure.ac:30: -1- _AM_SUBST_NOTMAKE([TEST_ENABLE_FALSE])
-m4trace:configure.ac:36: -2- _m4_warn([obsolete], [The macro `AC_HELP_STRING' is obsolete.
+configure.ac:25: the top level])
+m4trace:configure.ac:29: -1- m4_pattern_allow([^NVALGRIND$])
+m4trace:configure.ac:38: -2- _m4_warn([obsolete], [The macro `AC_HELP_STRING' is obsolete.
 You should run autoupdate.], [../../lib/autoconf/general.m4:207: AC_HELP_STRING is expanded from...
-configure.ac:36: the top level])
-m4trace:configure.ac:40: -1- m4_pattern_allow([^NVALGRIND$])
-m4trace:configure.ac:49: -2- _m4_warn([obsolete], [The macro `AC_HELP_STRING' is obsolete.
-You should run autoupdate.], [../../lib/autoconf/general.m4:207: AC_HELP_STRING is expanded from...
-configure.ac:49: the top level])
-m4trace:configure.ac:53: -1- PKG_CHECK_MODULES([LIBNL], [libnl-3.0], [
+configure.ac:38: the top level])
+m4trace:configure.ac:42: -1- PKG_CHECK_MODULES([LIBNL], [libnl-3.0], [
 			   have_libnl=yes
 			   AC_DEFINE([HAVE_LIBNL3], [1], [Use libnl-3.0])
 			   AC_DEFINE([HAVE_LIBNL], [1],  [Use libnl])
@@ -2902,41 +2893,41 @@ m4trace:configure.ac:53: -1- PKG_CHECK_MODULES([LIBNL], [libnl-3.0], [
 			   LIBNL_CFLAGS="$LIBNL_CFLAGS $LIBNL_ROUTE3_CFLAGS"
 			   LIBNL_LIBS="$LIBNL_LIBS $LIBNL_ROUTE3_LIBS"], [:
 			  ])
-m4trace:configure.ac:53: -1- PKG_PROG_PKG_CONFIG
-m4trace:configure.ac:53: -1- m4_pattern_forbid([^_?PKG_[A-Z_]+$])
-m4trace:configure.ac:53: -1- m4_pattern_allow([^PKG_CONFIG(_(PATH|LIBDIR|SYSROOT_DIR|ALLOW_SYSTEM_(CFLAGS|LIBS)))?$])
-m4trace:configure.ac:53: -1- m4_pattern_allow([^PKG_CONFIG_(DISABLE_UNINSTALLED|TOP_BUILD_DIR|DEBUG_SPEW)$])
-m4trace:configure.ac:53: -1- m4_pattern_allow([^PKG_CONFIG$])
-m4trace:configure.ac:53: -1- m4_pattern_allow([^PKG_CONFIG_PATH$])
-m4trace:configure.ac:53: -1- m4_pattern_allow([^PKG_CONFIG_LIBDIR$])
-m4trace:configure.ac:53: -1- m4_pattern_allow([^PKG_CONFIG$])
-m4trace:configure.ac:53: -1- m4_pattern_allow([^LIBNL_CFLAGS$])
-m4trace:configure.ac:53: -1- m4_pattern_allow([^LIBNL_LIBS$])
-m4trace:configure.ac:53: -1- PKG_CHECK_EXISTS([libnl-3.0], [pkg_cv_[]LIBNL_CFLAGS=`$PKG_CONFIG --[]cflags "libnl-3.0" 2>/dev/null`
+m4trace:configure.ac:42: -1- PKG_PROG_PKG_CONFIG
+m4trace:configure.ac:42: -1- m4_pattern_forbid([^_?PKG_[A-Z_]+$])
+m4trace:configure.ac:42: -1- m4_pattern_allow([^PKG_CONFIG(_(PATH|LIBDIR|SYSROOT_DIR|ALLOW_SYSTEM_(CFLAGS|LIBS)))?$])
+m4trace:configure.ac:42: -1- m4_pattern_allow([^PKG_CONFIG_(DISABLE_UNINSTALLED|TOP_BUILD_DIR|DEBUG_SPEW)$])
+m4trace:configure.ac:42: -1- m4_pattern_allow([^PKG_CONFIG$])
+m4trace:configure.ac:42: -1- m4_pattern_allow([^PKG_CONFIG_PATH$])
+m4trace:configure.ac:42: -1- m4_pattern_allow([^PKG_CONFIG_LIBDIR$])
+m4trace:configure.ac:42: -1- m4_pattern_allow([^PKG_CONFIG$])
+m4trace:configure.ac:42: -1- m4_pattern_allow([^LIBNL_CFLAGS$])
+m4trace:configure.ac:42: -1- m4_pattern_allow([^LIBNL_LIBS$])
+m4trace:configure.ac:42: -1- PKG_CHECK_EXISTS([libnl-3.0], [pkg_cv_[]LIBNL_CFLAGS=`$PKG_CONFIG --[]cflags "libnl-3.0" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes ], [pkg_failed=yes])
-m4trace:configure.ac:53: -1- PKG_CHECK_EXISTS([libnl-3.0], [pkg_cv_[]LIBNL_LIBS=`$PKG_CONFIG --[]libs "libnl-3.0" 2>/dev/null`
+m4trace:configure.ac:42: -1- PKG_CHECK_EXISTS([libnl-3.0], [pkg_cv_[]LIBNL_LIBS=`$PKG_CONFIG --[]libs "libnl-3.0" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes ], [pkg_failed=yes])
-m4trace:configure.ac:53: -1- _PKG_SHORT_ERRORS_SUPPORTED
-m4trace:configure.ac:53: -1- m4_pattern_allow([^HAVE_LIBNL3$])
-m4trace:configure.ac:53: -1- m4_pattern_allow([^HAVE_LIBNL$])
-m4trace:configure.ac:53: -1- PKG_CHECK_MODULES([LIBNL_ROUTE3], [libnl-route-3.0])
-m4trace:configure.ac:53: -1- m4_pattern_allow([^LIBNL_ROUTE3_CFLAGS$])
-m4trace:configure.ac:53: -1- m4_pattern_allow([^LIBNL_ROUTE3_LIBS$])
-m4trace:configure.ac:53: -1- PKG_CHECK_EXISTS([libnl-route-3.0], [pkg_cv_[]LIBNL_ROUTE3_CFLAGS=`$PKG_CONFIG --[]cflags "libnl-route-3.0" 2>/dev/null`
+m4trace:configure.ac:42: -1- _PKG_SHORT_ERRORS_SUPPORTED
+m4trace:configure.ac:42: -1- m4_pattern_allow([^HAVE_LIBNL3$])
+m4trace:configure.ac:42: -1- m4_pattern_allow([^HAVE_LIBNL$])
+m4trace:configure.ac:42: -1- PKG_CHECK_MODULES([LIBNL_ROUTE3], [libnl-route-3.0])
+m4trace:configure.ac:42: -1- m4_pattern_allow([^LIBNL_ROUTE3_CFLAGS$])
+m4trace:configure.ac:42: -1- m4_pattern_allow([^LIBNL_ROUTE3_LIBS$])
+m4trace:configure.ac:42: -1- PKG_CHECK_EXISTS([libnl-route-3.0], [pkg_cv_[]LIBNL_ROUTE3_CFLAGS=`$PKG_CONFIG --[]cflags "libnl-route-3.0" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes ], [pkg_failed=yes])
-m4trace:configure.ac:53: -1- PKG_CHECK_EXISTS([libnl-route-3.0], [pkg_cv_[]LIBNL_ROUTE3_LIBS=`$PKG_CONFIG --[]libs "libnl-route-3.0" 2>/dev/null`
+m4trace:configure.ac:42: -1- PKG_CHECK_EXISTS([libnl-route-3.0], [pkg_cv_[]LIBNL_ROUTE3_LIBS=`$PKG_CONFIG --[]libs "libnl-route-3.0" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes ], [pkg_failed=yes])
-m4trace:configure.ac:53: -1- _PKG_SHORT_ERRORS_SUPPORTED
-m4trace:configure.ac:62: -1- PKG_CHECK_MODULES([LIBNL3_BUG], [libnl-3.0 >= 3.2.15 libnl-3.0 < 3.2.22], [AC_DEFINE([HAVE_LIBNL3_BUG], [1], [Use libnl-3.2.15-21])], [:])
-m4trace:configure.ac:62: -1- m4_pattern_allow([^LIBNL3_BUG_CFLAGS$])
-m4trace:configure.ac:62: -1- m4_pattern_allow([^LIBNL3_BUG_LIBS$])
-m4trace:configure.ac:62: -1- PKG_CHECK_EXISTS([libnl-3.0 >= 3.2.15 libnl-3.0 < 3.2.22], [pkg_cv_[]LIBNL3_BUG_CFLAGS=`$PKG_CONFIG --[]cflags "libnl-3.0 >= 3.2.15 libnl-3.0 < 3.2.22" 2>/dev/null`
+m4trace:configure.ac:42: -1- _PKG_SHORT_ERRORS_SUPPORTED
+m4trace:configure.ac:51: -1- PKG_CHECK_MODULES([LIBNL3_BUG], [libnl-3.0 >= 3.2.15 libnl-3.0 < 3.2.22], [AC_DEFINE([HAVE_LIBNL3_BUG], [1], [Use libnl-3.2.15-21])], [:])
+m4trace:configure.ac:51: -1- m4_pattern_allow([^LIBNL3_BUG_CFLAGS$])
+m4trace:configure.ac:51: -1- m4_pattern_allow([^LIBNL3_BUG_LIBS$])
+m4trace:configure.ac:51: -1- PKG_CHECK_EXISTS([libnl-3.0 >= 3.2.15 libnl-3.0 < 3.2.22], [pkg_cv_[]LIBNL3_BUG_CFLAGS=`$PKG_CONFIG --[]cflags "libnl-3.0 >= 3.2.15 libnl-3.0 < 3.2.22" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes ], [pkg_failed=yes])
-m4trace:configure.ac:62: -1- PKG_CHECK_EXISTS([libnl-3.0 >= 3.2.15 libnl-3.0 < 3.2.22], [pkg_cv_[]LIBNL3_BUG_LIBS=`$PKG_CONFIG --[]libs "libnl-3.0 >= 3.2.15 libnl-3.0 < 3.2.22" 2>/dev/null`
+m4trace:configure.ac:51: -1- PKG_CHECK_EXISTS([libnl-3.0 >= 3.2.15 libnl-3.0 < 3.2.22], [pkg_cv_[]LIBNL3_BUG_LIBS=`$PKG_CONFIG --[]libs "libnl-3.0 >= 3.2.15 libnl-3.0 < 3.2.22" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes ], [pkg_failed=yes])
-m4trace:configure.ac:62: -1- _PKG_SHORT_ERRORS_SUPPORTED
-m4trace:configure.ac:62: -1- m4_pattern_allow([^HAVE_LIBNL3_BUG$])
-m4trace:configure.ac:66: -1- PKG_CHECK_MODULES([LIBNL], [libnl-1], [have_libnl=yes
+m4trace:configure.ac:51: -1- _PKG_SHORT_ERRORS_SUPPORTED
+m4trace:configure.ac:51: -1- m4_pattern_allow([^HAVE_LIBNL3_BUG$])
+m4trace:configure.ac:55: -1- PKG_CHECK_MODULES([LIBNL], [libnl-1], [have_libnl=yes
 				  AC_DEFINE([HAVE_LIBNL1], [1], [Use libnl-1])
 				  AC_DEFINE([HAVE_LIBNL], [1],  [Use libnl])
 				  AC_CHECK_LIB(nl, rtnl_link_vlan_get_id, [],
@@ -2944,49 +2935,49 @@ m4trace:configure.ac:66: -1- PKG_CHECK_MODULES([LIBNL], [libnl-1], [have_libnl=y
 				 ], [
 					AC_MSG_ERROR([libibverbs requires libnl.])
 				 ])
-m4trace:configure.ac:66: -1- m4_pattern_allow([^LIBNL_CFLAGS$])
-m4trace:configure.ac:66: -1- m4_pattern_allow([^LIBNL_LIBS$])
-m4trace:configure.ac:66: -1- PKG_CHECK_EXISTS([libnl-1], [pkg_cv_[]LIBNL_CFLAGS=`$PKG_CONFIG --[]cflags "libnl-1" 2>/dev/null`
+m4trace:configure.ac:55: -1- m4_pattern_allow([^LIBNL_CFLAGS$])
+m4trace:configure.ac:55: -1- m4_pattern_allow([^LIBNL_LIBS$])
+m4trace:configure.ac:55: -1- PKG_CHECK_EXISTS([libnl-1], [pkg_cv_[]LIBNL_CFLAGS=`$PKG_CONFIG --[]cflags "libnl-1" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes ], [pkg_failed=yes])
-m4trace:configure.ac:66: -1- PKG_CHECK_EXISTS([libnl-1], [pkg_cv_[]LIBNL_LIBS=`$PKG_CONFIG --[]libs "libnl-1" 2>/dev/null`
+m4trace:configure.ac:55: -1- PKG_CHECK_EXISTS([libnl-1], [pkg_cv_[]LIBNL_LIBS=`$PKG_CONFIG --[]libs "libnl-1" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes ], [pkg_failed=yes])
-m4trace:configure.ac:66: -1- _PKG_SHORT_ERRORS_SUPPORTED
-m4trace:configure.ac:66: -1- m4_pattern_allow([^HAVE_LIBNL1$])
-m4trace:configure.ac:66: -1- m4_pattern_allow([^HAVE_LIBNL$])
-m4trace:configure.ac:66: -1- m4_pattern_allow([^HAVE_LIBNL$])
-m4trace:configure.ac:76: -1- m4_pattern_allow([^NRESOLVE_NEIGH$])
-m4trace:configure.ac:78: -1- AM_CONDITIONAL([HAVE_LIBNL], [test "$have_libnl" = "yes"])
-m4trace:configure.ac:78: -1- m4_pattern_allow([^HAVE_LIBNL_TRUE$])
-m4trace:configure.ac:78: -1- m4_pattern_allow([^HAVE_LIBNL_FALSE$])
-m4trace:configure.ac:78: -1- _AM_SUBST_NOTMAKE([HAVE_LIBNL_TRUE])
-m4trace:configure.ac:78: -1- _AM_SUBST_NOTMAKE([HAVE_LIBNL_FALSE])
-m4trace:configure.ac:79: -1- m4_pattern_allow([^LIBNL_CFLAGS$])
-m4trace:configure.ac:80: -1- m4_pattern_allow([^LIBNL_LIBS$])
-m4trace:configure.ac:81: -1- AM_CONDITIONAL([NO_RESOLVE_NEIGH], [test x$with_resolve_neigh = xno])
-m4trace:configure.ac:81: -1- m4_pattern_allow([^NO_RESOLVE_NEIGH_TRUE$])
-m4trace:configure.ac:81: -1- m4_pattern_allow([^NO_RESOLVE_NEIGH_FALSE$])
-m4trace:configure.ac:81: -1- _AM_SUBST_NOTMAKE([NO_RESOLVE_NEIGH_TRUE])
-m4trace:configure.ac:81: -1- _AM_SUBST_NOTMAKE([NO_RESOLVE_NEIGH_FALSE])
-m4trace:configure.ac:84: -1- m4_pattern_allow([^HAVE_LIBDL$])
-m4trace:configure.ac:86: -1- m4_pattern_allow([^HAVE_LIBPTHREAD$])
-m4trace:configure.ac:90: -1- m4_pattern_allow([^STDC_HEADERS$])
-m4trace:configure.ac:93: -1- m4_pattern_allow([^HAVE_VALGRIND_MEMCHECK_H$])
-m4trace:configure.ac:102: -1- m4_pattern_allow([^const$])
-m4trace:configure.ac:116: -1- m4_pattern_allow([^LIBIBVERBS_VERSION_SCRIPT$])
-m4trace:configure.ac:118: -1- _m4_warn([obsolete], [The macro `AC_TRY_COMPILE' is obsolete.
+m4trace:configure.ac:55: -1- _PKG_SHORT_ERRORS_SUPPORTED
+m4trace:configure.ac:55: -1- m4_pattern_allow([^HAVE_LIBNL1$])
+m4trace:configure.ac:55: -1- m4_pattern_allow([^HAVE_LIBNL$])
+m4trace:configure.ac:55: -1- m4_pattern_allow([^HAVE_LIBNL$])
+m4trace:configure.ac:65: -1- m4_pattern_allow([^NRESOLVE_NEIGH$])
+m4trace:configure.ac:67: -1- AM_CONDITIONAL([HAVE_LIBNL], [test "$have_libnl" = "yes"])
+m4trace:configure.ac:67: -1- m4_pattern_allow([^HAVE_LIBNL_TRUE$])
+m4trace:configure.ac:67: -1- m4_pattern_allow([^HAVE_LIBNL_FALSE$])
+m4trace:configure.ac:67: -1- _AM_SUBST_NOTMAKE([HAVE_LIBNL_TRUE])
+m4trace:configure.ac:67: -1- _AM_SUBST_NOTMAKE([HAVE_LIBNL_FALSE])
+m4trace:configure.ac:68: -1- m4_pattern_allow([^LIBNL_CFLAGS$])
+m4trace:configure.ac:69: -1- m4_pattern_allow([^LIBNL_LIBS$])
+m4trace:configure.ac:70: -1- AM_CONDITIONAL([NO_RESOLVE_NEIGH], [test x$with_resolve_neigh = xno])
+m4trace:configure.ac:70: -1- m4_pattern_allow([^NO_RESOLVE_NEIGH_TRUE$])
+m4trace:configure.ac:70: -1- m4_pattern_allow([^NO_RESOLVE_NEIGH_FALSE$])
+m4trace:configure.ac:70: -1- _AM_SUBST_NOTMAKE([NO_RESOLVE_NEIGH_TRUE])
+m4trace:configure.ac:70: -1- _AM_SUBST_NOTMAKE([NO_RESOLVE_NEIGH_FALSE])
+m4trace:configure.ac:73: -1- m4_pattern_allow([^HAVE_LIBDL$])
+m4trace:configure.ac:75: -1- m4_pattern_allow([^HAVE_LIBPTHREAD$])
+m4trace:configure.ac:79: -1- m4_pattern_allow([^STDC_HEADERS$])
+m4trace:configure.ac:82: -1- m4_pattern_allow([^HAVE_VALGRIND_MEMCHECK_H$])
+m4trace:configure.ac:91: -1- m4_pattern_allow([^const$])
+m4trace:configure.ac:105: -1- m4_pattern_allow([^LIBIBVERBS_VERSION_SCRIPT$])
+m4trace:configure.ac:107: -1- _m4_warn([obsolete], [The macro `AC_TRY_COMPILE' is obsolete.
 You should run autoupdate.], [../../lib/autoconf/general.m4:2625: AC_TRY_COMPILE is expanded from...
 ../../lib/m4sugar/m4sh.m4:639: AS_IF is expanded from...
 ../../lib/autoconf/general.m4:2042: AC_CACHE_VAL is expanded from...
 ../../lib/autoconf/general.m4:2063: AC_CACHE_CHECK is expanded from...
-configure.ac:118: the top level])
-m4trace:configure.ac:123: -1- m4_pattern_allow([^HAVE_SYMVER_SUPPORT$])
-m4trace:configure.ac:127: -1- m4_pattern_allow([^LIB@&t@OBJS$])
-m4trace:configure.ac:127: -1- m4_pattern_allow([^LTLIBOBJS$])
-m4trace:configure.ac:127: -1- AM_CONDITIONAL([am__EXEEXT], [test -n "$EXEEXT"])
-m4trace:configure.ac:127: -1- m4_pattern_allow([^am__EXEEXT_TRUE$])
-m4trace:configure.ac:127: -1- m4_pattern_allow([^am__EXEEXT_FALSE$])
-m4trace:configure.ac:127: -1- _AM_SUBST_NOTMAKE([am__EXEEXT_TRUE])
-m4trace:configure.ac:127: -1- _AM_SUBST_NOTMAKE([am__EXEEXT_FALSE])
-m4trace:configure.ac:127: -1- _AC_AM_CONFIG_HEADER_HOOK(["$ac_file"])
-m4trace:configure.ac:127: -1- _AM_OUTPUT_DEPENDENCY_COMMANDS
-m4trace:configure.ac:127: -1- _LT_PROG_LTMAIN
+configure.ac:107: the top level])
+m4trace:configure.ac:112: -1- m4_pattern_allow([^HAVE_SYMVER_SUPPORT$])
+m4trace:configure.ac:116: -1- m4_pattern_allow([^LIB@&t@OBJS$])
+m4trace:configure.ac:116: -1- m4_pattern_allow([^LTLIBOBJS$])
+m4trace:configure.ac:116: -1- AM_CONDITIONAL([am__EXEEXT], [test -n "$EXEEXT"])
+m4trace:configure.ac:116: -1- m4_pattern_allow([^am__EXEEXT_TRUE$])
+m4trace:configure.ac:116: -1- m4_pattern_allow([^am__EXEEXT_FALSE$])
+m4trace:configure.ac:116: -1- _AM_SUBST_NOTMAKE([am__EXEEXT_TRUE])
+m4trace:configure.ac:116: -1- _AM_SUBST_NOTMAKE([am__EXEEXT_FALSE])
+m4trace:configure.ac:116: -1- _AC_AM_CONFIG_HEADER_HOOK(["$ac_file"])
+m4trace:configure.ac:116: -1- _AM_OUTPUT_DEPENDENCY_COMMANDS
+m4trace:configure.ac:116: -1- _LT_PROG_LTMAIN

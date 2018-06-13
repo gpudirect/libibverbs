@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.57)
-AC_INIT(libibverbs, 1.2.1mlnx1, linux-rdma@vger.kernel.org)
+AC_INIT(libibverbs, 41mlnx1, linux-rdma@vger.kernel.org)
 AC_CONFIG_SRCDIR([src/ibverbs.h])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_MACRO_DIR(config)
@@ -17,17 +17,6 @@ AC_PROG_LN_S
 AC_PROG_LIBTOOL
 
 LT_INIT
-
-##########################
-# Enable tests
-#
-AC_ARG_ENABLE(
-    [test],
-    [AC_HELP_STRING([--enable-test],
-                   [Build test programs (default=no)])],
-    [enable_test=$enableval],
-    [enable_test=no])
-AM_CONDITIONAL(TEST_ENABLE, test x$enable_test = xyes)
 
 ##########################
 # Enable support for valgrind

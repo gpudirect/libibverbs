@@ -1439,6 +1439,12 @@ static int ib_spec_to_kern_spec(struct ibv_exp_flow_spec *ib_spec,
 						  ibv_exp_kern_spec_action_tag);
 		kern_spec->flow_tag.tag_id = ib_spec->flow_tag.tag_id;
 		break;
+	case IBV_EXP_FLOW_SPEC_ACTION_DROP:
+		if (!is_exp)
+			return EINVAL;
+		kern_spec->drop.size = sizeof(struct
+					      ibv_exp_kern_spec_action_drop);
+		break;
 	default:
 		return EINVAL;
 	}
@@ -1461,6 +1467,8 @@ static int flow_is_exp(struct ibv_exp_flow_attr *flow_attr)
 		    IBV_EXP_FLOW_SPEC_VXLAN_TUNNEL ||
 		    ((struct ibv_exp_flow_spec *)ib_spec)->hdr.type ==
 		    IBV_EXP_FLOW_SPEC_ACTION_TAG ||
+		    ((struct ibv_exp_flow_spec *)ib_spec)->hdr.type ==
+		    IBV_EXP_FLOW_SPEC_ACTION_DROP ||
 		    ((struct ibv_exp_flow_spec *)ib_spec)->hdr.type &
 		    IBV_EXP_FLOW_SPEC_INNER)
 			return 1;

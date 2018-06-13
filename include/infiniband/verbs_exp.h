@@ -62,6 +62,8 @@ BEGIN_C_DECLS
 #define IBV_EXP_RET_EINVAL_ON_INVALID_COMP_MASK(val, valid_mask)	\
 		IBV_EXP_RET_ON_INVALID_COMP_MASK(val, valid_mask, EINVAL)
 
+#define IBV_EXP_RET_ZERO_ON_INVALID_COMP_MASK(val, valid_mask)	\
+		IBV_EXP_RET_ON_INVALID_COMP_MASK(val, valid_mask, 0)
 
 #define IBV_EXP_IMPLICIT_MR_SIZE (~((size_t)0))
 
@@ -127,6 +129,8 @@ enum ibv_exp_device_cap_flags {
 	IBV_EXP_DEVICE_RX_TCP_UDP_PKT_TYPE	= (IBV_EXP_START_FLAG << 15),
 	IBV_EXP_DEVICE_SCATTER_FCS		= (IBV_EXP_START_FLAG << 16),
 	IBV_EXP_DEVICE_MEM_WINDOW		= (IBV_EXP_START_FLAG << 17),
+	IBV_EXP_DEVICE_WQ_DELAY_DROP		= (IBV_EXP_START_FLAG << 18),
+	IBV_EXP_DEVICE_PHYSICAL_RANGE_MR	= (IBV_EXP_START_FLAG << 19),
 	IBV_EXP_DEVICE_MEM_MGT_EXTENSIONS	= (IBV_EXP_START_FLAG << 21),
 	IBV_EXP_DEVICE_DC_INFO			= (IBV_EXP_START_FLAG << 22),
 	/* Jumping to 23 as of next capability in include/rdma/ib_verbs.h */
@@ -166,8 +170,61 @@ enum ibv_exp_device_attr_comp_mask {
 	IBV_EXP_DEVICE_ATTR_TSO_CAPS		= (1 << 21),
 	IBV_EXP_DEVICE_ATTR_PACKET_PACING_CAPS	= (1 << 22),
 	IBV_EXP_DEVICE_ATTR_EC_GF_BASE		= (1 << 23),
+	IBV_EXP_DEVICE_ATTR_OOO_CAPS		= (1 << 24),
+	IBV_EXP_DEVICE_ATTR_SW_PARSING_CAPS	= (1 << 25),
+	IBV_EXP_DEVICE_ATTR_ODP_MAX_SIZE	= (1 << 26),
+	IBV_EXP_DEVICE_ATTR_TM_CAPS		= (1 << 27),
+	IBV_EXP_DEVICE_ATTR_TUNNEL_OFFLOADS_CAPS	= (1 << 28),
+	IBV_EXP_DEVICE_ATTR_MAX_DM_SIZE		= (1 << 29),
+	IBV_EXP_DEVICE_ATTR_TUNNELED_ATOMIC	= (1 << 30),
 	/* set supported bits for validity check */
-	IBV_EXP_DEVICE_ATTR_RESERVED		= (1 << 24),
+	IBV_EXP_DEVICE_ATTR_RESERVED			= (1UL << 31),
+};
+
+enum ibv_exp_tunnel_offloads_caps {
+	IBV_EXP_RAW_PACKET_CAP_TUNNELED_OFFLOAD_VXLAN  = 1 << 0,
+	IBV_EXP_RAW_PACKET_CAP_TUNNELED_OFFLOAD_GRE   = 1 << 1,
+	IBV_EXP_RAW_PACKET_CAP_TUNNELED_OFFLOAD_GENEVE = 1 << 2
+};
+
+enum ibv_exp_tunneled_atomic_caps {
+	IBV_EXP_TUNNELED_ATOMIC_SUPPORTED  = 1 << 0,
+};
+
+enum ibv_exp_dm_memcpy_dir {
+	IBV_EXP_DM_CPY_TO_DEVICE,
+	IBV_EXP_DM_CPY_TO_HOST
+};
+
+enum ibv_exp_dm_attr_comp_mask {
+	IBV_EXP_ALLOC_DM_ATTR_RESERVED	= (1 << 0),
+};
+
+struct ibv_exp_alloc_dm_attr {
+	size_t length;
+	uint32_t comp_mask;
+};
+
+enum ibv_exp_dm_comp_mask {
+	IBV_EXP_DM_COMP_MASK_RESERVED	= (1 << 0),
+};
+
+struct ibv_exp_dm {
+	struct ibv_context *context;
+	uint32_t handle;
+	uint32_t comp_mask;
+};
+
+enum ibv_exp_dm_cpy_comp_mask {
+	IBV_EXP_DM_CPY_COMP_MASK_RESERVED	= (1 << 0),
+};
+
+struct ibv_exp_memcpy_dm_attr {
+	enum ibv_exp_dm_memcpy_dir memcpy_dir;
+	void *host_addr;
+	uint64_t dm_offset;
+	size_t length;
+	uint32_t comp_mask;
 };
 
 struct ibv_exp_device_calc_cap {
@@ -195,7 +252,8 @@ struct ibv_exp_masked_atomic_params {
 };
 
 enum ibv_odp_general_cap_bits {
-	IBV_EXP_ODP_SUPPORT = 1 << 0,
+	IBV_EXP_ODP_SUPPORT	     = 1 << 0,
+	IBV_EXP_ODP_SUPPORT_IMPLICIT = 1 << 1,
 };
 
 enum ibv_exp_odp_transport_cap_bits {
@@ -249,8 +307,30 @@ enum ibv_exp_mp_rq_shifts {
 	IBV_EXP_MP_RQ_2BYTES_SHIFT	= 1 << 0
 };
 
+struct ibv_exp_open_device_attr {
+	uint32_t		comp_mask;
+	struct {
+		uint64_t	 peer_id;
+		char		*peer_name;
+	} peer_info;
+};
+
+enum ibv_exp_set_context_attr {
+	IBV_EXP_SET_ATTR_PEER_INFO		= (1 << 0),
+	IBV_EXP_SET_CONTEXT_ATTR_RESERVED	= (1 << 1),
+};
+
+enum ibv_exp_mp_rq_sup_types {
+	IBV_EXP_MP_RQ_SUP_TYPE_SRQ_TM	= 1 << 0,
+	/*
+	 * For backport compability we use IBV_EXP_QPT_RAW_PACKET value for the
+	 * IBV_EXP_MP_RQ_SUP_TYPE_WQ_RQ.
+	 */
+	IBV_EXP_MP_RQ_SUP_TYPE_WQ_RQ	= 1 << 5,
+};
+
 struct ibv_exp_mp_rq_caps {
-	uint32_t supported_qps; /* use ibv_exp_supported_qp_types */
+	uint32_t supported_qps; /* use ibv_exp_mp_rq_sup_types */
 	uint32_t allowed_shifts; /* use ibv_exp_mp_rq_shifts */
 	uint8_t min_single_wqe_log_num_of_strides;
 	uint8_t max_single_wqe_log_num_of_strides;
@@ -270,11 +350,56 @@ struct ibv_exp_tso_caps {
 	uint32_t supported_qpts;
 };
 
+enum ibv_exp_packet_pacing_cap_flags {
+	IBV_EXP_QP_SUPPORT_BURST               = 1 << 0,
+};
+
 struct ibv_exp_packet_pacing_caps {
 	uint32_t qp_rate_limit_min;
 	uint32_t qp_rate_limit_max; /* In kbps */
 	uint32_t supported_qpts;
-	uint32_t reserved;
+	uint8_t  cap_flags; /* mlx5_packet_pacing_cap_flags */
+	uint8_t  reserved[3];
+};
+
+enum ibv_exp_ooo_transport_cap_bits {
+	IBV_EXP_OOO_SUPPORT_RW_DATA_PLACEMENT = (1 << 0),
+};
+
+struct ibv_exp_ooo_caps {
+	uint32_t rc_caps;
+	uint32_t xrc_caps;
+	uint32_t dc_caps;
+	uint32_t ud_caps;
+};
+
+enum ibv_exp_sw_parsing_offloads {
+	IBV_EXP_SW_PARSING	= (1 << 0),
+	IBV_EXP_SW_PARSING_CSUM = (1 << 1),
+	IBV_EXP_SW_PARSING_LSO	= (1 << 2),
+};
+
+struct ibv_exp_sw_parsing_caps {
+	uint32_t sw_parsing_offloads;
+	uint32_t supported_qpts;
+};
+
+enum ibv_exp_tm_cap_flags {
+	IBV_EXP_TM_CAP_RC		    = 1 << 0,
+	IBV_EXP_TM_CAP_DC		    = 1 << 1
+};
+
+struct ibv_exp_tm_caps {
+	/* Max size for RNDV message */
+	uint32_t max_rndv_hdr_size;
+	/* Max number of entries in tag matching list */
+	uint32_t max_num_tags;
+	/* TM capabilities mask - from enum ibv_exp_tm_cap_flags */
+	uint32_t capability_flags;
+	/* Max number of outstanding list operations */
+	uint32_t max_ops;
+	/* Max number of SGE in a tag matching entry */
+	uint32_t max_sge;
 };
 
 struct ibv_exp_device_attr {
@@ -351,6 +476,13 @@ struct ibv_exp_device_attr {
 	struct ibv_exp_tso_caps	tso_caps;
 	struct ibv_exp_packet_pacing_caps packet_pacing_caps;
 	uint32_t ec_w_mask;
+	struct ibv_exp_ooo_caps ooo_caps;
+	struct ibv_exp_sw_parsing_caps sw_parsing_caps;
+	uint64_t		odp_mr_max_size;
+	struct ibv_exp_tm_caps  tm_caps;
+	uint32_t		tunnel_offloads_caps; /* enum ibv_exp_tunnel_offloads_caps */
+	uint64_t 		max_dm_size;
+	uint32_t		tunneled_atomic_caps; /* enum ibv_exp_tunneled_atomic_caps */
 };
 
 enum {
@@ -376,8 +508,9 @@ enum ibv_exp_access_flags {
 	IBV_EXP_ACCESS_ON_DEMAND		= (IBV_EXP_START_FLAG << 14),
 	IBV_EXP_ACCESS_RELAXED			= (IBV_EXP_START_FLAG << 15),
 	IBV_EXP_ACCESS_PHYSICAL_ADDR		= (IBV_EXP_START_FLAG << 16),
+	IBV_EXP_ACCESS_TUNNELED_ATOMIC		= (IBV_EXP_START_FLAG << 17),
 	/* set supported bits for validity check */
-	IBV_EXP_ACCESS_RESERVED			= (IBV_EXP_START_FLAG << 17)
+	IBV_EXP_ACCESS_RESERVED			= (IBV_EXP_START_FLAG << 18)
 };
 
 /* memory window information struct that is common to types 1 and 2 */
@@ -623,18 +756,39 @@ struct ibv_exp_send_wr {
 };
 
 /*
+ * Flags for ibv_exp_clock_info struct comp_mask
+ */
+
+enum ibv_exp_clock_info_comp_mask {
+	IBV_EXP_CLOCK_INFO_RESERVED = 1 << 0,
+};
+
+struct ibv_exp_clock_info {
+	uint64_t cycles;
+	uint64_t nsec;
+	uint64_t frac;
+	uint64_t mask;
+	uint32_t shift;
+	uint32_t mult;
+	uint32_t comp_mask;
+};
+
+/*
  * Flags for ibv_exp_values struct comp_mask
  */
 enum ibv_exp_values_comp_mask {
 		IBV_EXP_VALUES_HW_CLOCK_NS	= 1 << 0,
 		IBV_EXP_VALUES_HW_CLOCK		= 1 << 1,
-		IBV_EXP_VALUES_RESERVED		= 1 << 2
+		IBV_EXP_VALUES_CLOCK_INFO	= 1 << 2,
+		IBV_EXP_VALUES_RESERVED		= 1 << 3,
 };
 
 struct ibv_exp_values {
 	uint32_t comp_mask;
 	uint64_t hwclock_ns;
 	uint64_t hwclock;
+
+	struct ibv_exp_clock_info clock_info;
 };
 
 /*
@@ -749,6 +903,7 @@ enum ibv_exp_qp_attr_mask {
 	IBV_EXP_QP_GROUP_RSS		= IBV_EXP_START_FLAG << 21,
 	IBV_EXP_QP_DC_KEY		= IBV_EXP_START_FLAG << 22,
 	IBV_EXP_QP_FLOW_ENTROPY		= IBV_EXP_START_FLAG << 23,
+	IBV_EXP_QP_OOO_RW_DATA_PLACEMENT	= IBV_EXP_START_FLAG << 24,
 	IBV_EXP_QP_RATE_LIMIT		= IBV_EXP_START_FLAG << 25,
 };
 
@@ -758,7 +913,13 @@ enum ibv_exp_qp_attr_mask {
  */
 enum ibv_exp_qp_attr_comp_mask {
 	IBV_EXP_QP_ATTR_FLOW_ENTROPY	= 1UL << 0,
-	IBV_EXP_QP_ATTR_RESERVED	= 1UL << 1
+	IBV_EXP_QP_ATTR_BURST_INFO	= 1UL << 1,
+	IBV_EXP_QP_ATTR_RESERVED	= 1UL << 2
+};
+
+struct ibv_exp_burst_info {
+	uint32_t	max_burst_sz;
+	uint16_t	typical_pkt_sz;
 };
 
 struct ibv_exp_qp_attr {
@@ -791,6 +952,7 @@ struct ibv_exp_qp_attr {
 	uint32_t		comp_mask; /* reserved for future growth (must be 0) */
 	uint32_t		flow_entropy;
 	uint32_t		rate_limit;
+	struct ibv_exp_burst_info	burst_info;
 };
 
 /*
@@ -818,7 +980,8 @@ enum ibv_exp_qp_init_attr_comp_mask {
 	IBV_EXP_QP_INIT_ATTR_PORT		= 1 << 9,
 	IBV_EXP_QP_INIT_ATTR_PEER_DIRECT	= 1 << 10,
 	IBV_EXP_QP_INIT_ATTR_MAX_TSO_HEADER	= 1 << 11,
-	IBV_EXP_QP_INIT_ATTR_RESERVED1		= 1 << 12,
+	IBV_EXP_QP_INIT_ATTR_ASSOCIATED_QPN	= 1 << 12,
+	IBV_EXP_QP_INIT_ATTR_RESERVED1		= 1 << 13,
 };
 
 enum ibv_exp_qpg_type {
@@ -865,8 +1028,10 @@ enum ibv_exp_rx_hash_fields {
 	IBV_EXP_RX_HASH_SRC_PORT_TCP	= 1 << 4,
 	IBV_EXP_RX_HASH_DST_PORT_TCP	= 1 << 5,
 	IBV_EXP_RX_HASH_SRC_PORT_UDP	= 1 << 6,
-	IBV_EXP_RX_HASH_DST_PORT_UDP	= 1 << 7
+	IBV_EXP_RX_HASH_DST_PORT_UDP	= 1 << 7,
 };
+
+#define IBV_EXP_RX_HASH_INNER (1ULL << 31)
 
 /*
  * RX Hash QP configuration. Sets hash function, hash types and
@@ -897,9 +1062,10 @@ enum ibv_exp_qp_create_flags {
 	IBV_EXP_QP_CREATE_EC_PARITY_EN	       = (1 << 10),
 	IBV_EXP_QP_CREATE_RX_END_PADDING       = (1 << 11),
 	IBV_EXP_QP_CREATE_SCATTER_FCS          = (1 << 12),
+	IBV_EXP_QP_CREATE_TUNNEL_OFFLOADS      = (1 << 13),
 	IBV_EXP_QP_CREATE_INTERNAL_USE	       = (1 << 15),
 	/* set supported bits for validity check */
-	IBV_EXP_QP_CREATE_MASK                 = (0x00001FDC)
+	IBV_EXP_QP_CREATE_MASK                 = (0x00003FDC)
 };
 
 struct ibv_exp_qp_init_attr {
@@ -925,6 +1091,7 @@ struct ibv_exp_qp_init_attr {
 	uint8_t port_num;
 	struct ibv_exp_peer_direct_attr *peer_direct_attrs;
 	uint16_t		max_tso_header;
+	uint32_t        associated_qpn;
 };
 
 /*
@@ -934,8 +1101,10 @@ enum ibv_exp_dct_init_attr_comp_mask {
 	IBV_EXP_DCT_INIT_ATTR_RESERVED	= 1 << 0
 };
 
-enum {
-	IBV_EXP_DCT_CREATE_FLAGS_MASK		= (1 << 0) - 1,
+enum ibv_exp_dct_create_flags {
+	/* enum for create_flags of ib_uverbs_create_dct */
+	IBV_EXP_DCT_OOO_RW_DATA_PLACEMENT		= 1 << 0,
+	IBV_EXP_DCT_CREATE_FLAGS_MASK	= IBV_EXP_DCT_OOO_RW_DATA_PLACEMENT,
 };
 
 struct ibv_exp_dct_init_attr {
@@ -1135,6 +1304,7 @@ enum ibv_exp_flow_spec_type {
 	IBV_EXP_FLOW_SPEC_VXLAN_TUNNEL	= 0x50,
 	IBV_EXP_FLOW_SPEC_INNER		= 0x100,
 	IBV_EXP_FLOW_SPEC_ACTION_TAG	= 0x1000,
+	IBV_EXP_FLOW_SPEC_ACTION_DROP	= 0x1001,
 };
 
 struct ibv_exp_flow_eth_filter {
@@ -1194,6 +1364,11 @@ struct ibv_exp_flow_spec_action_tag {
 	enum ibv_exp_flow_spec_type  type;
 	uint16_t  size;
 	uint32_t  tag_id;
+};
+
+struct ibv_exp_flow_spec_action_drop {
+	enum ibv_exp_flow_spec_type  type;
+	uint16_t  size;
 };
 
 struct ibv_exp_flow_ipv6_ext_filter {
@@ -1266,6 +1441,7 @@ struct ibv_exp_flow_spec {
 		struct ibv_exp_flow_spec_ipv6_ext ipv6_ext;
 		struct ibv_exp_flow_spec_tunnel tunnel;
 		struct ibv_exp_flow_spec_action_tag flow_tag;
+		struct ibv_exp_flow_spec_action_drop drop;
 	};
 };
 
@@ -1317,7 +1493,13 @@ enum ibv_exp_wc_opcode {
  * receive by testing (opcode & IBV_EXP_WC_RECV).
  */
 	IBV_EXP_WC_RECV			= 1 << 7,
-	IBV_EXP_WC_RECV_RDMA_WITH_IMM
+	IBV_EXP_WC_RECV_RDMA_WITH_IMM,
+
+	IBV_EXP_WC_TM_ADD		= IBV_EXP_WC_RECV + IBV_EXP_START_ENUM,
+	IBV_EXP_WC_TM_DEL,
+	IBV_EXP_WC_TM_SYNC,
+	IBV_EXP_WC_TM_RECV,
+	IBV_EXP_WC_TM_NO_TAG
 };
 
 enum ibv_exp_wc_flags {
@@ -1340,6 +1522,11 @@ enum ibv_exp_wc_flags {
 	IBV_EXP_WC_RX_OUTER_TCP_UDP_CSUM_OK	= IBV_EXP_START_FLAG << 16,
 	IBV_EXP_WC_RX_OUTER_IPV4_PACKET		= IBV_EXP_START_FLAG << 17,
 	IBV_EXP_WC_RX_OUTER_IPV6_PACKET		= IBV_EXP_START_FLAG << 18,
+	IBV_EXP_WC_TM_SYNC_REQ			= IBV_EXP_START_FLAG << 19,
+	IBV_EXP_WC_TM_DEL_FAILED		= IBV_EXP_START_FLAG << 20,
+	IBV_EXP_WC_TM_MATCH			= IBV_EXP_START_FLAG << 21,
+	IBV_EXP_WC_TM_DATA_VALID		= IBV_EXP_START_FLAG << 22,
+	IBV_EXP_WC_TM_RNDV_INCOMPLETE		= IBV_EXP_START_FLAG << 23
 };
 
 struct ibv_exp_wc {
@@ -1361,6 +1548,11 @@ struct ibv_exp_wc {
 	struct ibv_srq	       *srq;
 	struct ibv_exp_dct     *dct;
 	uint64_t		exp_wc_flags; /* use ibv_exp_wc_flags */
+
+	struct {
+		uint64_t tag;     /* Tag information */
+		uint32_t priv;    /* Application context */
+	} tm_info;
 };
 
 /*
@@ -1394,7 +1586,8 @@ struct ibv_exp_prefetch_attr {
 enum ibv_exp_reg_mr_in_comp_mask {
 	/* set supported bits for validity check */
 	IBV_EXP_REG_MR_CREATE_FLAGS	= (1 << 0),
-	IBV_EXP_REG_MR_RESERVED		= (1 << 1)
+	IBV_EXP_REG_MR_DM		= (1 << 1),
+	IBV_EXP_REG_MR_RESERVED		= (1 << 2)
 };
 
 enum ibv_exp_reg_mr_create_flags {
@@ -1408,6 +1601,7 @@ struct ibv_exp_reg_mr_in {
 	uint64_t exp_access; /* use ibv_exp_access_flags */
 	uint32_t comp_mask; /* reserved for future growth (must be 0) */
 	uint32_t create_flags; /* use ibv_exp_reg_mr_create_flags */
+	struct ibv_exp_dm *dm;
 };
 
 
@@ -1596,7 +1790,8 @@ struct ibv_exp_wq_mp_rq {
 enum ibv_exp_wq_init_attr_flags {
 	IBV_EXP_CREATE_WQ_FLAG_RX_END_PADDING	= (1ULL << 0),
 	IBV_EXP_CREATE_WQ_FLAG_SCATTER_FCS	= (1ULL << 1),
-	IBV_EXP_CREATE_WQ_FLAG_RESERVED		= (1ULL << 2)
+	IBV_EXP_CREATE_WQ_FLAG_DELAY_DROP	= (1ULL << 2),
+	IBV_EXP_CREATE_WQ_FLAG_RESERVED		= (1ULL << 3)
 };
 
 struct ibv_exp_wq_init_attr {
@@ -1948,6 +2143,7 @@ enum ibv_exp_cq_family_flags {
 							    */
 	IBV_EXP_CQ_RX_TCP_PACKET		= 1 << 11,
 	IBV_EXP_CQ_RX_UDP_PACKET		= 1 << 12,
+	IBV_EXP_CQ_RX_WITH_TIMESTAMP		= 1 << 13,
 };
 
 /* All functions of CQ family included in CQ family version 1 */
@@ -2049,6 +2245,66 @@ struct ibv_exp_cq_family_v1 {
 						 uint32_t *offset,
 						 uint32_t *flags,
 						 uint16_t *vlan_tci);
+	/*
+	 * poll_length_flags_ts - Poll one receive completion and provide the
+	 *			  related message length, completion flags
+	 *			  and HW timestamp.
+	 *			  The HW timestamp is valid only when the
+	 *			  IBV_EXP_CQ_RX_WITH_TIMESTAMP flag is set.
+	 *
+	 * The same as poll_length_flags but:
+	 *  - Also retrievs the packet's RX HW timestamp from the work completion.
+	 */
+	int32_t (*poll_length_flags_ts)(struct ibv_cq *cq, void *buf,
+					uint32_t *inl, uint32_t *flags,
+					uint64_t *timestamp);
+	/*
+	 * poll_length_flags_mp_rq_ts - Poll one receive completion and provide
+	 *				the related message length,
+	 *				packet-offset, completion flags and
+	 *				HW timestamp.
+	 *
+	 * The same as poll_length_flags_ts but:
+	 *  - Without the inline-receive support.
+	 *  - Also retrives offset in the WR posted buffer as defined by the
+	 *    WR SG list. The start of the received packet is located in this
+	 *    offset.
+	 */
+	int32_t (*poll_length_flags_mp_rq_ts)(struct ibv_cq *cq,
+					      uint32_t *offset,
+					      uint32_t *flags,
+					      uint64_t *timestamp);
+	/*
+	 * poll_length_flags_cvlan_ts - Poll one receive completion and provide the
+	 *				related message length, completion flags,
+	 *				CVLAN TCI and HW timestamp.
+	 *				The HW timestamp is valid only when the
+	 *				IBV_EXP_CQ_RX_WITH_TIMESTAMP flag is set.
+	 *
+	 * The same as poll_length_flags_cvlan but:
+	 *  - Also retrievs the packet's RX HW timestamp from the work completion.
+	 */
+	int32_t (*poll_length_flags_cvlan_ts)(struct ibv_cq *cq, void *buf,
+					      uint32_t *inl, uint32_t *flags,
+					      uint16_t *vlan_tci,
+					      uint64_t *timestamp);
+	/*
+	 * poll_length_flags_mp_rq_cvlan_ts - Poll one receive completion and provide
+	 *				      the related message length,
+	 *				      packet-offset, completion flags and
+	 *				      CVLAN TCI.
+	 *
+	 * The same as poll_length_flags_cvlan_ts but:
+	 *  - Without the inline-receive support.
+	 *  - Also retrives offset in the WR posted buffer as defined by the
+	 *    WR SG list. The start of the received packet is located in this
+	 *    offset.
+	 */
+	int32_t (*poll_length_flags_mp_rq_cvlan_ts)(struct ibv_cq *cq,
+						    uint32_t *offset,
+						    uint32_t *flags,
+						    uint16_t *vlan_tci,
+						    uint64_t *timestamp);
 };
 
 enum {
@@ -2194,8 +2450,100 @@ struct ibv_exp_rollback_ctx;
 struct ibv_exp_peer_peek;
 struct ibv_exp_peer_abort_peek;
 
+enum ibv_exp_srq_type {
+	IBV_EXP_SRQT_BASIC	  = IBV_SRQT_BASIC,
+	IBV_EXP_SRQT_XRC	  = IBV_SRQT_XRC,
+	IBV_EXP_SRQT_TAG_MATCHING = 32
+};
+
+enum ibv_exp_create_srq_comp_mask {
+	IBV_EXP_CREATE_SRQ_CQ	    = (1 << 0),
+	IBV_EXP_CREATE_SRQ_XRCD	    = (1 << 1),
+	IBV_EXP_CREATE_SRQ_TM	    = (1 << 2),
+	IBV_EXP_CREATE_SRQ_DC_OFFLOAD_PARAMS = (1 << 3),
+	IBV_EXP_CREATE_SRQ_MP_WR    = (1 << 4),
+	IBV_EXP_CREATE_SRQ_RESERVED = (1 << 5)
+};
+
+struct ibv_exp_tm_cap {
+	uint32_t		max_num_tags;
+	uint32_t		max_ops;
+};
+
+struct ibv_exp_srq_dc_offload_params {
+	uint16_t			  pkey_index;
+	enum ibv_mtu			  path_mtu;
+	uint8_t				  sl;
+	uint8_t				  max_rd_atomic;
+	uint8_t				  min_rnr_timer;
+	uint8_t				  timeout;
+	uint8_t				  retry_cnt;
+	uint8_t				  rnr_retry;
+	uint64_t			  dct_key;
+	uint32_t			  ooo_caps;  /* ibv_exp_ooo_transport_cap_bits */
+	uint32_t			  comp_mask; /* reserved for future growth (must be 0) */
+};
+
+struct ibv_exp_mp_wr {
+	uint8_t log_num_of_strides;
+	uint8_t log_stride_size;
+};
+
+struct ibv_exp_create_srq_attr {
+	struct ibv_srq_init_attr     base;
+	enum ibv_exp_srq_type	     srq_type;
+	struct ibv_pd		    *pd;
+	uint32_t		     comp_mask;
+	struct ibv_cq		    *cq;
+	struct ibv_xrcd		    *xrcd;
+	struct ibv_exp_tm_cap	     tm_cap;
+	struct ibv_exp_srq_dc_offload_params *dc_offload_params; /* DC_OFFLOAD_PARAMS */
+	struct ibv_exp_mp_wr	     mp_wr;
+};
+
+enum ibv_exp_ops_wr_opcode {
+	IBV_EXP_WR_TAG_ADD,
+	IBV_EXP_WR_TAG_DEL,
+	IBV_EXP_WR_TAG_SYNC
+};
+
+enum ibv_exp_ops_flags {
+	IBV_EXP_OPS_SIGNALED = 1 << 0,
+	IBV_EXP_OPS_TM_SYNC  = 1 << 1
+};
+
+struct ibv_exp_ops_wr {
+	uint64_t				wr_id;
+	struct ibv_exp_ops_wr		       *next;
+	enum ibv_exp_ops_wr_opcode		opcode;
+	int					flags;
+	struct {
+		uint32_t			unexpected_cnt;
+		uint32_t			handle;
+		struct {
+			uint64_t		recv_wr_id;
+			struct ibv_sge	       *sg_list;
+			int			num_sge;
+			uint64_t		tag;
+			uint64_t		mask;
+		} add;
+	} tm;
+};
+
 struct verbs_context_exp {
 	/*  "grows up" - new fields go here */
+	struct ibv_exp_dm 	*(*exp_alloc_dm)(struct ibv_context *context,
+						 struct ibv_exp_alloc_dm_attr *attr);
+	int			(*exp_free_dm)(struct ibv_exp_dm *dm);
+	int	(*exp_memcpy_dm)(struct ibv_exp_dm *dm,
+						struct ibv_exp_memcpy_dm_attr *attr);
+	int (*exp_post_srq_ops)(struct ibv_srq *srq,
+				struct ibv_exp_ops_wr *op,
+				struct ibv_exp_ops_wr **bad_op);
+	struct ibv_srq *(*exp_create_srq)(struct ibv_context *context,
+					  struct ibv_exp_create_srq_attr *attr);
+	int (*drv_exp_set_context_attr)(struct ibv_context *context,
+					struct ibv_exp_open_device_attr *attr);
 	struct ibv_ah * (*drv_exp_ibv_create_kah)(struct ibv_pd *pd,
 						  struct ibv_exp_ah_attr *attr_exp);
 	int (*exp_peer_peek_cq)(struct ibv_cq *ibcq,
@@ -3000,6 +3348,31 @@ static inline int ibv_exp_query_values(struct ibv_context *context, int q_values
 	return vctx->drv_exp_query_values(context, q_values, values);
 }
 
+static inline uint64_t ibv_exp_cqe_ts_to_ns(struct ibv_exp_clock_info *clock_info,
+					    uint64_t ts)
+{
+	uint64_t delta, nsec;
+
+	IBV_EXP_RET_ZERO_ON_INVALID_COMP_MASK(clock_info->comp_mask,
+					      IBV_EXP_CLOCK_INFO_RESERVED - 1);
+
+	delta = (ts & clock_info->mask) - clock_info->cycles;
+	nsec  = clock_info->nsec;
+
+	/*
+	 * delta should be within half the mask range otherwise
+	 * below formula isn't correct.
+	 */
+	if (delta > clock_info->mask / 2) {
+		delta = (clock_info->cycles - ts) & clock_info->mask;
+		nsec -= ((delta * clock_info->mult) - clock_info->frac) >> clock_info->shift;
+	} else {
+		nsec += ((delta * clock_info->mult) + clock_info->frac) >> clock_info->shift;
+	}
+
+	return nsec;
+}
+
 static inline struct ibv_exp_flow *ibv_exp_create_flow(struct ibv_qp *qp,
 						       struct ibv_exp_flow_attr *flow)
 {
@@ -3056,18 +3429,11 @@ static inline int ibv_exp_post_send(struct ibv_qp *qp,
  * ibv_exp_reg_shared_mr - Register to an existing shared memory region
  * @in - Experimental register shared MR input data.
  */
+static struct ibv_mr *ibv_exp_reg_shared_mr(struct ibv_exp_reg_shared_mr_in *mr_in) DEPRECATED;
 static inline struct ibv_mr *ibv_exp_reg_shared_mr(struct ibv_exp_reg_shared_mr_in *mr_in)
 {
-	struct verbs_context_exp *vctx = verbs_get_exp_ctx_op(mr_in->pd->context,
-							      lib_exp_ibv_reg_shared_mr);
-	if (!vctx) {
-		errno = ENOSYS;
-		return NULL;
-	}
-	IBV_EXP_RET_NULL_ON_INVALID_COMP_MASK(mr_in->comp_mask,
-					      IBV_EXP_REG_SHARED_MR_RESERVED - 1);
-
-	return vctx->lib_exp_ibv_reg_shared_mr(mr_in);
+	errno = ENOSYS;
+	return NULL;
 }
 
 /**
@@ -3342,6 +3708,24 @@ ibv_exp_alloc_mkey_list_memory(struct ibv_exp_mkey_list_container_attr *attr)
 	return vctx->lib_exp_alloc_mkey_list_memory(attr);
 }
 
+static inline struct ibv_srq *
+ibv_exp_create_srq(struct ibv_context *context,
+		   struct ibv_exp_create_srq_attr *attr)
+{
+	struct verbs_context_exp *vctx;
+
+	vctx = verbs_get_exp_ctx_op(context, exp_create_srq);
+	if (!vctx) {
+		errno = ENOSYS;
+		return NULL;
+	}
+
+	IBV_EXP_RET_NULL_ON_INVALID_COMP_MASK(attr->comp_mask,
+					      IBV_EXP_CREATE_SRQ_RESERVED - 1);
+
+	return vctx->exp_create_srq(context, attr);
+}
+
 /**
  * ibv_exp_create_res_domain - create resource domain
  */
@@ -3539,6 +3923,145 @@ static inline int ibv_exp_query_gid_attr(struct ibv_context *context,
 						IBV_EXP_QUERY_GID_ATTR_RESERVED - 1);
 	return vctx->exp_query_gid_attr(context, port_num, index, attr);
 }
+
+/**
+ * ibv_exp_open_device - Opens device and creates context with specific attr
+ * @device: ib device
+ * @attr: context attribute
+ *
+ * Returns a pointer to the allocated device context, or NULL on failure.
+ */
+static inline struct ibv_context *ibv_exp_open_device(struct ibv_device *device,
+						      struct ibv_exp_open_device_attr *attr)
+{
+	struct ibv_context *context;
+	struct verbs_context_exp *vctx;
+	int ret;
+
+	IBV_EXP_RET_NULL_ON_INVALID_COMP_MASK(attr->comp_mask,
+					      IBV_EXP_SET_CONTEXT_ATTR_RESERVED - 1);
+
+	if (!attr->comp_mask) {
+		errno = EINVAL;
+		goto out;
+	}
+
+	context = ibv_open_device(device);
+	if (!context)
+		goto out;
+
+	vctx = verbs_get_exp_ctx_op(context, drv_exp_set_context_attr);
+	if (!vctx) {
+		errno = ENOSYS;
+		goto close;
+	}
+
+	ret = vctx->drv_exp_set_context_attr(context, attr);
+	if (ret)
+		goto close;
+
+	return context;
+
+close:
+	ibv_close_device(context);
+out:
+	return NULL;
+}
+
+/**
+ * ibv_exp_post_srq_ops - Preform series of offload configuration manipulations
+ * on special types of SRQ.
+ */
+static inline int ibv_exp_post_srq_ops(struct ibv_srq *srq,
+				       struct ibv_exp_ops_wr *op,
+				       struct ibv_exp_ops_wr **bad_op)
+{
+	struct verbs_context_exp *vctx;
+
+	vctx = verbs_get_exp_ctx_op(srq->context, exp_post_srq_ops);
+	if (!vctx) {
+		*bad_op = op;
+		return ENOSYS;
+	}
+	return vctx->exp_post_srq_ops(srq, op, bad_op);
+
+}
+
+/**
+ * ibv_exp_alloc_dm - Allocate device memory
+ */
+static inline struct ibv_exp_dm *ibv_exp_alloc_dm(struct ibv_context *context,
+						  struct ibv_exp_alloc_dm_attr *attr)
+{
+	struct verbs_context_exp *vctx;
+
+	IBV_EXP_RET_NULL_ON_INVALID_COMP_MASK(attr->comp_mask,
+					      IBV_EXP_ALLOC_DM_ATTR_RESERVED - 1);
+
+	vctx = verbs_get_exp_ctx_op(context, exp_alloc_dm);
+	if (!vctx)
+		return NULL;
+
+	return vctx->exp_alloc_dm(context, attr);
+}
+/**
+ * ibv_exp_free_dm - Free device allocated memory
+ */
+static inline int ibv_exp_free_dm(struct ibv_exp_dm *dm)
+{
+	struct verbs_context_exp *vctx;
+
+	vctx = verbs_get_exp_ctx_op(dm->context, exp_free_dm);
+	if (!vctx)
+		return ENOSYS;
+
+	return vctx->exp_free_dm(dm);
+}
+
+/**
+ * ibv_exp_memcpy_dm - copy to/from device allocated memory
+ */
+static inline int ibv_exp_memcpy_dm(struct ibv_exp_dm *dm,
+				    struct ibv_exp_memcpy_dm_attr *attr)
+{
+	struct verbs_context_exp *vctx;
+
+	IBV_EXP_RET_EINVAL_ON_INVALID_COMP_MASK(attr->comp_mask,
+						IBV_EXP_DM_CPY_COMP_MASK_RESERVED - 1);
+
+	vctx = verbs_get_exp_ctx_op(dm->context, exp_memcpy_dm);
+	if (!vctx)
+		return ENOSYS;
+
+	return vctx->exp_memcpy_dm(dm, attr);
+}
+
+enum ibv_exp_tmh_op {
+	IBV_EXP_TMH_NO_TAG	      = 0,
+	IBV_EXP_TMH_RNDV	      = 1,
+	IBV_EXP_TMH_FIN		      = 2,
+	IBV_EXP_TMH_EAGER	      = 3
+};
+
+struct ibv_exp_tmh {
+	uint8_t		opcode;      /* from enum ibv_exp_tmh_op */
+	uint8_t		reserved[3]; /* must be zero */
+	uint32_t	app_ctx;
+	uint64_t	tag;
+};
+
+struct ibv_exp_tmh_rvh {
+	uint64_t	va;
+	uint32_t	rkey;
+	uint32_t	len;
+};
+
+struct ibv_exp_tmh_ravh {
+	uint32_t	sl_dct;
+	uint32_t	reserved;    /* must be zero */
+	uint64_t	dc_access_key;
+};
+
 END_C_DECLS
 
 #define VERBS_MAX_ENV_VAL 4096
