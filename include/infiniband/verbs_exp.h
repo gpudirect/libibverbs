@@ -2537,7 +2537,8 @@ struct verbs_context_exp {
 				 struct ibv_exp_send_wr *wr,
 				 struct ibv_exp_send_wr **bad_wr);
 	int (*drv_exp_query_send_info)(struct ibv_qp *qp,
-				 uint64_t wr_id);
+				 uint64_t wr_id,
+				 struct ibv_qp_swr_info * swr_info);
 	struct ibv_exp_dm 	*(*exp_alloc_dm)(struct ibv_context *context,
 						 struct ibv_exp_alloc_dm_attr *attr);
 	int			(*exp_free_dm)(struct ibv_exp_dm *dm);
@@ -3445,14 +3446,15 @@ static inline int ibv_exp_post_send_info(struct ibv_qp *qp,
 }
 
 static inline int ibv_exp_query_send_info(struct ibv_qp *qp,
-				    uint64_t wr_id)
+				    uint64_t wr_id,
+				    struct ibv_qp_swr_info * swr_info)
 {
 	struct verbs_context_exp *vctx = verbs_get_exp_ctx_op(qp->context,
 							      drv_exp_query_send_info);
 	if (!vctx)
 		return -ENOSYS;
 
-	return vctx->drv_exp_query_send_info(qp, wr_id);
+	return vctx->drv_exp_query_send_info(qp, wr_id, swr_info);
 }
 
 /**

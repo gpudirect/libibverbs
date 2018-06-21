@@ -22,7 +22,7 @@ src_libibverbs_la_LDFLAGS = -version-info 1 -export-dynamic $(LIBNL_LIBS)\
 src_libibverbs_la_DEPENDENCIES = $(srcdir)/src/libibverbs.map
 
 bin_PROGRAMS = examples/ibv_devices examples/ibv_devinfo \
-    examples/ibv_asyncwatch examples/ibv_rc_pingpong examples/ibv_rc_info_pingpong examples/ibv_uc_pingpong \
+    examples/ibv_asyncwatch examples/ibv_rc_pingpong examples/ibv_uc_pingpong \
     examples/ibv_ud_pingpong examples/ibv_srq_pingpong  \
     examples/ibv_xsrq_pingpong examples/ibv_cc_pingpong examples/ibv_task_pingpong \
     examples/ibv_dcini examples/ibv_dctgt examples/ibv_umr examples/ibv_intf \
@@ -34,8 +34,6 @@ examples_ibv_devinfo_SOURCES = examples/devinfo.c
 examples_ibv_devinfo_LDADD = $(top_builddir)/src/libibverbs.la
 examples_ibv_rc_pingpong_SOURCES = examples/rc_pingpong.c examples/pingpong.c
 examples_ibv_rc_pingpong_LDADD = $(top_builddir)/src/libibverbs.la
-examples_ibv_rc_info_pingpong_SOURCES = examples/rc_info_pingpong.c examples/pingpong.c
-examples_ibv_rc_info_pingpong_LDADD = $(top_builddir)/src/libibverbs.la
 examples_ibv_uc_pingpong_SOURCES = examples/uc_pingpong.c examples/pingpong.c
 examples_ibv_uc_pingpong_LDADD = $(top_builddir)/src/libibverbs.la
 examples_ibv_ud_pingpong_SOURCES = examples/ud_pingpong.c examples/pingpong.c

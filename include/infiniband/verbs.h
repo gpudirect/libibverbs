@@ -836,6 +836,17 @@ enum ibv_event_flags {
 };
 
 
+struct ibv_qp_swr_info {
+	uint64_t wr_id;
+
+	uintptr_t ptr_to_size;
+	uint32_t val_size;
+
+	uintptr_t ptr_to_addr;
+	uint64_t val_addr;
+
+	int offset;
+};
 
 struct ibv_qp {
 	struct ibv_context     *context;
