@@ -2532,6 +2532,12 @@ struct ibv_exp_ops_wr {
 
 struct verbs_context_exp {
 	/*  "grows up" - new fields go here */
+	//Expose send
+	int (*drv_exp_post_send_info)(struct ibv_qp *qp,
+				 struct ibv_exp_send_wr *wr,
+				 struct ibv_exp_send_wr **bad_wr);
+	int (*drv_exp_query_send_info)(struct ibv_qp *qp,
+				 uint64_t wr_id);
 	struct ibv_exp_dm 	*(*exp_alloc_dm)(struct ibv_context *context,
 						 struct ibv_exp_alloc_dm_attr *attr);
 	int			(*exp_free_dm)(struct ibv_exp_dm *dm);
@@ -2634,13 +2640,6 @@ struct verbs_context_exp {
 	int (*drv_exp_post_send)(struct ibv_qp *qp,
 				 struct ibv_exp_send_wr *wr,
 				 struct ibv_exp_send_wr **bad_wr);
-	//Expose send
-	int (*drv_exp_post_send_info)(struct ibv_qp *qp,
-				 struct ibv_exp_send_wr *wr,
-				 struct ibv_exp_send_wr **bad_wr);
-	int (*drv_exp_query_send_info)(struct ibv_qp *qp,
-				 uint64_t wr_id);
-
 	struct ibv_mr * (*drv_exp_reg_mr)(struct ibv_exp_reg_mr_in *in);
 	struct ibv_mr * (*lib_exp_reg_mr)(struct ibv_exp_reg_mr_in *in);
 	struct ibv_ah * (*drv_exp_ibv_create_ah)(struct ibv_pd *pd,
