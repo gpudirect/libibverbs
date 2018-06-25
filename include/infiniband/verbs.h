@@ -836,7 +836,7 @@ enum ibv_event_flags {
 };
 
 
-struct ibv_qp_swr_info {
+struct ibv_qp_swr_sge {
 	uint64_t wr_id;
 
 	uintptr_t ptr_to_size;
@@ -846,6 +846,12 @@ struct ibv_qp_swr_info {
 	uint64_t val_addr;
 
 	int offset;
+};
+
+struct ibv_qp_swr_info {
+	uint64_t wr_id;
+	int num_sge;
+	struct ibv_qp_swr_sge * sge_list;
 };
 
 struct ibv_qp {

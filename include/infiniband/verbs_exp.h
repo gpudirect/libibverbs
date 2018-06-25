@@ -592,6 +592,7 @@ enum ibv_exp_send_flags {
 	IBV_EXP_SEND_WITH_CALC		= (IBV_EXP_START_FLAG << 1),
 	IBV_EXP_SEND_WAIT_EN_LAST	= (IBV_EXP_START_FLAG << 2),
 	IBV_EXP_SEND_EXT_ATOMIC_INLINE	= (IBV_EXP_START_FLAG << 3),
+	IBV_EXP_SEND_GET_INFO		= (IBV_EXP_START_FLAG << 4),
 };
 
 struct ibv_exp_cmp_swap {
@@ -2533,9 +2534,6 @@ struct ibv_exp_ops_wr {
 struct verbs_context_exp {
 	/*  "grows up" - new fields go here */
 	//Expose send
-	int (*drv_exp_post_send_info)(struct ibv_qp *qp,
-				 struct ibv_exp_send_wr *wr,
-				 struct ibv_exp_send_wr **bad_wr);
 	int (*drv_exp_query_send_info)(struct ibv_qp *qp,
 				 uint64_t wr_id,
 				 struct ibv_qp_swr_info * swr_info);
@@ -3432,19 +3430,7 @@ static inline int ibv_exp_post_send(struct ibv_qp *qp,
 	return vctx->drv_exp_post_send(qp, wr, bad_wr);
 }
 
-//Expose send
-static inline int ibv_exp_post_send_info(struct ibv_qp *qp,
-				    struct ibv_exp_send_wr *wr,
-				    struct ibv_exp_send_wr **bad_wr)
-{
-	struct verbs_context_exp *vctx = verbs_get_exp_ctx_op(qp->context,
-							      drv_exp_post_send_info);
-	if (!vctx)
-		return -ENOSYS;
-
-	return vctx->drv_exp_post_send_info(qp, wr, bad_wr);
-}
-
+//Query exposed send info
 static inline int ibv_exp_query_send_info(struct ibv_qp *qp,
 				    uint64_t wr_id,
 				    struct ibv_qp_swr_info * swr_info)
