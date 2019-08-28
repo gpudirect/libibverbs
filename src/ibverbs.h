@@ -77,6 +77,8 @@
 #define min(x, y) (((x) < (y)) ? (x) : (y))
 #endif
 
+#define RDMA_CDEV_DIR "/dev/infiniband"
+
 struct ibv_abi_compat_v2 {
 	struct ibv_comp_channel	channel;
 	pthread_mutex_t		in_use;

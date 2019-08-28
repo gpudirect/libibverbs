@@ -594,7 +594,7 @@ struct ibv_context *__ibv_open_device(struct ibv_device *device)
 	struct verbs_context *context_ex;
 	struct verbs_context_exp *context_exp;
 
-	if (asprintf(&devpath, "/dev/infiniband/%s", device->dev_name) < 0)
+	if (asprintf(&devpath, RDMA_CDEV_DIR"/%s", device->dev_name) < 0)
 		return NULL;
 
 	/*

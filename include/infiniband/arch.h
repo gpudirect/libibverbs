@@ -55,6 +55,16 @@ static inline uint64_t ntohll(uint64_t x) { return x; }
 #error __BYTE_ORDER is neither __LITTLE_ENDIAN nor __BIG_ENDIAN
 #endif
 
+#ifndef htobe64
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#define htobe64(x) bswap_64(x)
+#define be64toh(x) bswap_64(x)
+#else
+#define htobe64(x) ((uint64_t)x)
+#define be64toh(x) ((uint64_t)x)
+#endif
+#endif
+
 /*
  * Architecture-specific defines.  Currently, an architecture is
  * required to implement the following operations:

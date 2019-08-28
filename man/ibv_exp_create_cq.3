@@ -70,6 +70,8 @@ specifies the CQ features.  It is either 0 or the bitwise OR of one or more of t
 .B IBV_EXP_CQ_TIMESTAMP_TO_SYS_TIME \fR Convert the timestamp in WC to system time (unsupported by mlx4)
 .TP
 .B IBV_EXP_CQ_COMPRESSED_CQE \fR Work with compressed CQEs
+.TP
+.B IBV_EXP_CQ_AS_NOTIFY \fR Use PowerPC as_notify interrupt instead of MSI.
 
 .PP
 .B ibv_destroy_cq()

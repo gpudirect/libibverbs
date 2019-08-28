@@ -81,6 +81,21 @@ static struct ibv_sysfs_dev *sysfs_dev_list;
 static struct ibv_driver_name *driver_name_list;
 static struct ibv_driver *head_driver, *tail_driver;
 
+static int try_access_device(const struct ibv_sysfs_dev *sysfs_dev)
+{
+	struct stat cdev_stat;
+	char *devpath;
+	int ret;
+
+	if (asprintf(&devpath, RDMA_CDEV_DIR"/%s",
+		     sysfs_dev->sysfs_name) < 0)
+		return ENOMEM;
+
+	ret = stat(devpath, &cdev_stat);
+	free(devpath);
+	return ret;
+}
+
 static int find_sysfs_devs(void)
 {
 	char class_path[IBV_SYSFS_PATH_MAX];
@@ -140,6 +155,9 @@ static int find_sysfs_devs(void)
 			sysfs_dev->ibdev_path, sizeof(sysfs_dev->ibdev_path),
 			"%s/class/infiniband/%s", ibv_get_sysfs_path(),
 			sysfs_dev->ibdev_name))
+			continue;
+
+		if (try_access_device(sysfs_dev))
 			continue;
 
 		sysfs_dev->next        = sysfs_dev_list;

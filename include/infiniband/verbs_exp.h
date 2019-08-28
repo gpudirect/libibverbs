@@ -33,6 +33,18 @@
  * SOFTWARE.
  */
 
+/************************************************************
+ *                                                          *
+ *   ALL THE EXPERIMENTAL VERBS WILL BE MARKED AS           *
+ *   DEPRECATED STARTING FROM  MLNX_OFED 4.6.2 ONWARDS      *
+ *                                                          *
+ *   FROM MLNX_OFED 5.0 RELEASE (Q1 2020) ONWARDS,          *
+ *   MLNX_OFED VERBS API WILL MIGRATE FROM THE LEGACY       *
+ *   VERSION OF USER SPACE LIBRARIES TO THE UPSTREAM        *
+ *   VERSION RDMA-CORE.                                     *
+ *                                                          *
+ * **********************************************************/
+
 #ifndef INFINIBAND_VERBS_EXP_H
 #define INFINIBAND_VERBS_EXP_H
 
@@ -50,8 +62,9 @@ BEGIN_C_DECLS
 
 #define IBV_EXP_RET_ON_INVALID_COMP_MASK(val, valid_mask, ret)						\
 	if ((val) > (valid_mask)) {									\
-		fprintf(stderr, "%s: invalid comp_mask !!! (comp_mask = 0x%x valid_mask = 0x%x)\n",	\
-			__FUNCTION__, val, valid_mask);							\
+		unsigned long long __val = val, __valid_mask = valid_mask;				\
+		fprintf(stderr, "%s: invalid comp_mask !!! (comp_mask = 0x%llx valid_mask = 0x%llx)\n",	\
+			__FUNCTION__, __val, __valid_mask);						\
 		errno = EINVAL;										\
 		return ret;										\
 	}
@@ -131,11 +144,14 @@ enum ibv_exp_device_cap_flags {
 	IBV_EXP_DEVICE_MEM_WINDOW		= (IBV_EXP_START_FLAG << 17),
 	IBV_EXP_DEVICE_WQ_DELAY_DROP		= (IBV_EXP_START_FLAG << 18),
 	IBV_EXP_DEVICE_PHYSICAL_RANGE_MR	= (IBV_EXP_START_FLAG << 19),
+	IBV_EXP_DEVICE_CAPI			= (IBV_EXP_START_FLAG << 20),
 	IBV_EXP_DEVICE_MEM_MGT_EXTENSIONS	= (IBV_EXP_START_FLAG << 21),
 	IBV_EXP_DEVICE_DC_INFO			= (IBV_EXP_START_FLAG << 22),
 	/* Jumping to 23 as of next capability in include/rdma/ib_verbs.h */
 	IBV_EXP_DEVICE_MW_TYPE_2A		= (IBV_EXP_START_FLAG << 23),
 	IBV_EXP_DEVICE_MW_TYPE_2B		= (IBV_EXP_START_FLAG << 24),
+	IBV_EXP_DEVICE_UMR_FIXED_SIZE		= (IBV_EXP_START_FLAG << 25),
+	IBV_EXP_DEVICE_PACKET_BASED_CREDIT_MODE = (IBV_EXP_START_FLAG << 26),
 	IBV_EXP_DEVICE_CROSS_CHANNEL		= (IBV_EXP_START_FLAG << 28),
 	IBV_EXP_DEVICE_MANAGED_FLOW_STEERING	= (IBV_EXP_START_FLAG << 29),
 	IBV_EXP_DEVICE_MR_ALLOCATE		= (IBV_EXP_START_FLAG << 30),
@@ -177,8 +193,18 @@ enum ibv_exp_device_attr_comp_mask {
 	IBV_EXP_DEVICE_ATTR_TUNNEL_OFFLOADS_CAPS	= (1 << 28),
 	IBV_EXP_DEVICE_ATTR_MAX_DM_SIZE		= (1 << 29),
 	IBV_EXP_DEVICE_ATTR_TUNNELED_ATOMIC	= (1 << 30),
+	IBV_EXP_DEVICE_ATTR_COMP_MASK_2		= (1 << 31)
+	/* For future growth, please use ibv_exp_device_attr_comp_mask_2 */
+};
+
+/* set supported bits for validity check */
+#define IBV_EXP_DEVICE_ATTR_RESERVED (1ULL << 32)
+
+enum ibv_exp_device_attr_comp_mask_2 {
+	IBV_EXP_DEVICE_ATTR_UMR_FIXED_SIZE_CAPS	= (1 << 0),
+	IBV_EXP_DEVICE_ATTR_PCI_ATOMIC_CAPS = (1 << 1),
 	/* set supported bits for validity check */
-	IBV_EXP_DEVICE_ATTR_RESERVED			= (1UL << 31),
+	IBV_EXP_DEVICE_ATTR_RESERVED_2 = (1 << 2),
 };
 
 enum ibv_exp_tunnel_offloads_caps {
@@ -402,6 +428,22 @@ struct ibv_exp_tm_caps {
 	uint32_t max_sge;
 };
 
+struct ibv_exp_umr_fixed_size_caps {
+	uint64_t max_entity_size;
+};
+
+struct ibv_exp_pci_atomic_caps {
+	uint16_t fetch_add;
+	uint16_t swap;
+	uint16_t compare_swap;
+};
+
+enum ibv_exp_pci_atomic_cap_ops_supported_sizes {
+	IBV_EXP_PCI_ATOMIC_OP_SIZE_SUP_4_BYTES	= (1ULL << 0),
+	IBV_EXP_PCI_ATOMIC_OP_SIZE_SUP_8_BYTES	= (1ULL << 1),
+	IBV_EXP_PCI_ATOMIC_OP_SIZE_SUP_16_BYTES	= (1ULL << 2),
+};
+
 struct ibv_exp_device_attr {
 	char			fw_ver[64];
 	uint64_t		node_guid;
@@ -483,6 +525,9 @@ struct ibv_exp_device_attr {
 	uint32_t		tunnel_offloads_caps; /* enum ibv_exp_tunnel_offloads_caps */
 	uint64_t 		max_dm_size;
 	uint32_t		tunneled_atomic_caps; /* enum ibv_exp_tunneled_atomic_caps */
+	uint64_t		comp_mask_2; /* enum ibv_exp_device_attr_comp_mask_2 */
+	struct ibv_exp_umr_fixed_size_caps umr_fixed_size_caps;
+	struct ibv_exp_pci_atomic_caps pci_atomic_caps;
 };
 
 enum {
@@ -628,7 +673,8 @@ struct ibv_exp_mem_repeat_block {
 
 enum ibv_exp_umr_wr_type {
 	IBV_EXP_UMR_MR_LIST,
-	IBV_EXP_UMR_REPEAT
+	IBV_EXP_UMR_REPEAT,
+	IBV_EXP_UMR_MR_LIST_FIXED_SIZE,
 };
 
 struct ibv_exp_send_wr {
@@ -799,6 +845,7 @@ enum ibv_exp_cq_create_flags {
 	IBV_EXP_CQ_TIMESTAMP			= 1 << 1,
 	IBV_EXP_CQ_TIMESTAMP_TO_SYS_TIME	= 1 << 2,
 	IBV_EXP_CQ_COMPRESSED_CQE		= 1 << 3,
+	IBV_EXP_CQ_AS_NOTIFY			= 1 << 4,
 	/*
 	 * note: update IBV_EXP_CQ_CREATE_FLAGS_MASK when adding new fields
 	 */
@@ -808,7 +855,8 @@ enum {
 	IBV_EXP_CQ_CREATE_FLAGS_MASK	= IBV_EXP_CQ_CREATE_CROSS_CHANNEL |
 					  IBV_EXP_CQ_TIMESTAMP |
 					  IBV_EXP_CQ_TIMESTAMP_TO_SYS_TIME |
-					  IBV_EXP_CQ_COMPRESSED_CQE,
+					  IBV_EXP_CQ_COMPRESSED_CQE |
+					  IBV_EXP_CQ_AS_NOTIFY,
 };
 
 /*
@@ -1064,8 +1112,9 @@ enum ibv_exp_qp_create_flags {
 	IBV_EXP_QP_CREATE_SCATTER_FCS          = (1 << 12),
 	IBV_EXP_QP_CREATE_TUNNEL_OFFLOADS      = (1 << 13),
 	IBV_EXP_QP_CREATE_INTERNAL_USE	       = (1 << 15),
+	IBV_EXP_QP_CREATE_PACKET_BASED_CREDIT_MODE = (1 << 16),
 	/* set supported bits for validity check */
-	IBV_EXP_QP_CREATE_MASK                 = (0x00003FDC)
+	IBV_EXP_QP_CREATE_MASK                 = (0x00013FDC)
 };
 
 struct ibv_exp_qp_init_attr {
@@ -1499,7 +1548,9 @@ enum ibv_exp_wc_opcode {
 	IBV_EXP_WC_TM_DEL,
 	IBV_EXP_WC_TM_SYNC,
 	IBV_EXP_WC_TM_RECV,
-	IBV_EXP_WC_TM_NO_TAG
+	IBV_EXP_WC_TM_NO_TAG,
+
+	IBV_EXP_WC_RECV_NOP
 };
 
 enum ibv_exp_wc_flags {
@@ -1526,7 +1577,9 @@ enum ibv_exp_wc_flags {
 	IBV_EXP_WC_TM_DEL_FAILED		= IBV_EXP_START_FLAG << 20,
 	IBV_EXP_WC_TM_MATCH			= IBV_EXP_START_FLAG << 21,
 	IBV_EXP_WC_TM_DATA_VALID		= IBV_EXP_START_FLAG << 22,
-	IBV_EXP_WC_TM_RNDV_INCOMPLETE		= IBV_EXP_START_FLAG << 23
+	IBV_EXP_WC_TM_RNDV_INCOMPLETE		= IBV_EXP_START_FLAG << 23,
+	IBV_EXP_WC_MP_WR_MORE_IN_MSG		= IBV_EXP_START_FLAG << 24,
+	IBV_EXP_WC_MP_WR_CONSUMED		= IBV_EXP_START_FLAG << 25
 };
 
 struct ibv_exp_wc {
@@ -1534,7 +1587,15 @@ struct ibv_exp_wc {
 	enum ibv_wc_status	status;
 	enum ibv_exp_wc_opcode	exp_opcode;
 	uint32_t		vendor_err;
-	uint32_t		byte_len;
+	union {
+		uint32_t byte_len;
+		struct {
+			/* Packet offset in strides from start of the WR's buffer */
+			uint16_t strides_offset;
+			/* Packet size in bytes */
+			uint16_t byte_len;
+		} mp_wr; /* Should be used when WC is recieved on a MP WR */
+	};
 	uint32_t		imm_data; /* in network byte order */
 	uint32_t		qp_num;
 	uint32_t		src_qp;
@@ -1642,7 +1703,8 @@ struct ibv_exp_arm_attr {
 
 enum ibv_exp_mr_create_flags {
 	IBV_EXP_MR_SIGNATURE_EN		= (1 << 0),
-	IBV_EXP_MR_INDIRECT_KLMS	= (1 << 1)
+	IBV_EXP_MR_INDIRECT_KLMS	= (1 << 1),
+	IBV_EXP_MR_FIXED_BUFFER_SIZE	= (1 << 2)
 };
 
 struct ibv_exp_mr_init_attr {
@@ -3185,8 +3247,10 @@ static inline int ibv_exp_query_device(struct ibv_context *context,
 	if (!vctx)
 		return ENOSYS;
 
-	IBV_EXP_RET_EINVAL_ON_INVALID_COMP_MASK(attr->comp_mask,
-						IBV_EXP_DEVICE_ATTR_RESERVED - 1);
+	if (attr->comp_mask & IBV_EXP_DEVICE_ATTR_COMP_MASK_2)
+		IBV_EXP_RET_EINVAL_ON_INVALID_COMP_MASK(attr->comp_mask_2,
+							IBV_EXP_DEVICE_ATTR_RESERVED_2 - 1);
+
 	return vctx->lib_exp_query_device(context, attr);
 }
 
@@ -3356,7 +3420,7 @@ static inline uint64_t ibv_exp_cqe_ts_to_ns(struct ibv_exp_clock_info *clock_inf
 	IBV_EXP_RET_ZERO_ON_INVALID_COMP_MASK(clock_info->comp_mask,
 					      IBV_EXP_CLOCK_INFO_RESERVED - 1);
 
-	delta = (ts & clock_info->mask) - clock_info->cycles;
+	delta = (ts - clock_info->cycles) & clock_info->mask;
 	nsec  = clock_info->nsec;
 
 	/*

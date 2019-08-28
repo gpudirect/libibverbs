@@ -85,6 +85,9 @@ struct ibv_tso_caps    tso_caps;                   /* TCP segmentation offload c
 uint64_t               odp_mar_max_size;	   /* Max supported ODP MR size */
 uint64_t 		max_dm_size;		/* Device Memory available for allocation */
 uint32_t               tunneled_atomic_caps;    /* Tunneled atomic capability, operation is supported if IBV_EXP_TUNNELED_ATOMIC_SUPPORTED is set */
+uint64_t               comp_mask_2;             /* Use ibv_exp_device_attr_comp_mask_2 enum */
+struct ibv_exp_umr_fixed_size_caps   umr_fixed_size_caps; /*UMR fixed size capability */
+struct ibv_exp_pci_atomic_caps pci_atomic_caps; /* PCI Atomic Operations Capabilities */
 .in -8
 };
 
@@ -167,6 +170,15 @@ uint32_t qp_rate_limit_max; /* Maximum rate limit in kbps */
 uint32_t supported_qpts;  /* Bitmap showing which QP types are supported. */
 uint8_t  cap_flags; /* ibv_exp_packet_pacing_cap_flags  */
 uint8_t  reserved[3];
+.in -8
+};
+
+
+struct ibv_exp_pci_atomic_caps {
+.in +8
+uint16_t fetch_add;	/* Mask with enum ibv_exp_pci_atomic_ops_supported_sizes to know for which sizes fetch and add operation is supported */
+uint16_t swap;		/* Mask with enum ibv_exp_pci_atomic_ops_supported_sizes to know for which sizes swap operation is supported */
+uint16_t compare_swap;	/* Mask with enum ibv_exp_pci_atomic_ops_supported_sizes to know for which sizes compare and swap operation is supported */
 .in -8
 };
 

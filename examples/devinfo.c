@@ -290,7 +290,10 @@ static void print_caps_exp(uint64_t caps)
 				   IBV_EXP_DEVICE_RX_TCP_UDP_PKT_TYPE |
 				   IBV_EXP_DEVICE_SCATTER_FCS |
 				   IBV_EXP_DEVICE_WQ_DELAY_DROP |
-				   IBV_EXP_DEVICE_PHYSICAL_RANGE_MR);
+				   IBV_EXP_DEVICE_PHYSICAL_RANGE_MR |
+				   IBV_EXP_DEVICE_CAPI |
+				   IBV_EXP_DEVICE_UMR_FIXED_SIZE |
+				   IBV_EXP_DEVICE_PACKET_BASED_CREDIT_MODE);
 
 	if (caps & IBV_EXP_DEVICE_DC_TRANSPORT)
 		printf("\t\t\t\t\tEXP_DC_TRANSPORT\n");
@@ -342,6 +345,12 @@ static void print_caps_exp(uint64_t caps)
 		printf("\t\t\t\t\tEXP_WQ_DELAY_DROP\n");
 	if (caps & IBV_EXP_DEVICE_PHYSICAL_RANGE_MR)
 		printf("\t\t\t\t\tEXP_PHYSICAL_RANGE_MR\n");
+	if (caps & IBV_EXP_DEVICE_CAPI)
+		printf("\t\t\t\t\tEXP_DEVICE_CAPI\n");
+	if (caps & IBV_EXP_DEVICE_UMR_FIXED_SIZE)
+		printf("\t\t\t\t\tEXP_UMR_FIXED_SIZE\n");
+	if (caps & IBV_EXP_DEVICE_PACKET_BASED_CREDIT_MODE)
+		printf("\t\t\t\t\tEXP_PACKET_BASED_CREDIT_MODE\n");
 	if (caps & unknown_flags)
 		printf("\t\t\t\t\tUnknown flags: 0x%" PRIX64 "\n", caps & unknown_flags);
 }
@@ -552,7 +561,8 @@ static int print_hca_cap(struct ibv_device *ib_dev, uint8_t ib_port)
 	}
 
 	memset(&device_attr, 0, sizeof(device_attr));
-	device_attr.comp_mask = IBV_EXP_DEVICE_ATTR_RESERVED - 1;
+	device_attr.comp_mask = 0xffffffff;
+	device_attr.comp_mask_2 = IBV_EXP_DEVICE_ATTR_RESERVED_2 - 1;
 
 	if (ibv_exp_query_device(ctx, &device_attr)) {
 		if (ibv_query_device(ctx, &device_legacy_attr)) {
@@ -703,6 +713,12 @@ static int print_hca_cap(struct ibv_device *ib_dev, uint8_t ib_port)
 			if (device_attr.tunneled_atomic_caps &
 			    IBV_EXP_TUNNELED_ATOMIC_SUPPORTED)
 				printf("SUPPORT\n");
+		}
+		if (device_attr.comp_mask & IBV_EXP_DEVICE_ATTR_COMP_MASK_2) {
+			if (device_attr.comp_mask_2 & IBV_EXP_DEVICE_ATTR_UMR_FIXED_SIZE_CAPS) {
+				printf("\tUMR fixed size:\n");
+				printf("\t\tmax entity size:\t%" PRIu64 "\n", device_attr.umr_fixed_size_caps.max_entity_size);
+			}
 		}
 	}
 

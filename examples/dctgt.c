@@ -75,6 +75,7 @@ struct dc_ctx {
 	int			inl;
 	pthread_t		poll_thread;
 	int			use_ooo;
+	int			gidx;
 };
 
 static void usage(const char *argv0)
@@ -89,11 +90,11 @@ static void usage(const char *argv0)
 	printf("  -s, --size=<size>      size of message to exchange (default 4096)\n");
 	printf("  -n, --iters=<iters>    number of exchanges (unlimited)\n");
 	printf("  -e, --events           sleep on CQ events (default poll)\n");
-	printf("  -c, --contiguous-mr    use contiguous mr\n");
 	printf("  -k, --dc-key           DC transport key\n");
 	printf("  -m, --mtu              MTU of the DCT\n");
 	printf("  -b, --ooo              enable out of order processing\n");
 	printf("  -l, --inline           Requested inline receive size\n");
+	printf("  -g, --gid-index        Gid index associated with the DCT\n");
 }
 
 static int post_recv(struct dc_ctx *ctx, int n)
@@ -300,13 +301,15 @@ int main(int argc, char *argv[])
 		.ib_port	= 1,
 		.dct_key	= 0x1234,
 		.size		= 4096,
-		.mtu		= IBV_MTU_2048,
+		.mtu		= IBV_MTU_1024,
 		.inl		= 0,
+		.gidx		= -1,
 	};
 	int i;
 	uint32_t srqn;
 	int mtu;
 	struct ibv_exp_device_attr dattr;
+	union ibv_gid my_gid;
 
 	srand48(getpid() * time(NULL));
 
@@ -324,10 +327,11 @@ int main(int argc, char *argv[])
 			{ .name = "mtu",	.has_arg = 1, .val = 'm' },
 			{ .name = "inline",	.has_arg = 1, .val = 'l' },
 			{ .name = "ooo",  .has_arg = 0, .val = 'b' },
+			{ .name = "gid-index", .has_arg = 1, .val = 'g' },
 			{ 0 }
 		};
 
-		c = getopt_long(argc, argv, "p:d:i:s:n:ebk:m:l:",
+		c = getopt_long(argc, argv, "p:d:i:s:n:ebk:m:l:g:",
 				long_options, NULL);
 		if (c == -1)
 			break;
@@ -389,6 +393,10 @@ int main(int argc, char *argv[])
 			ctx.use_ooo = 1;
 			break;
 
+		case 'g':
+			ctx.gidx = strtol(optarg, NULL, 0);
+			break;
+
 		default:
 			usage(argv[0]);
 			return 1;
@@ -431,9 +439,11 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+
 	dattr.comp_mask = IBV_EXP_DEVICE_ATTR_EXP_CAP_FLAGS |
 		IBV_EXP_DEVICE_DC_RD_REQ |
-		IBV_EXP_DEVICE_DC_RD_RES;
+		IBV_EXP_DEVICE_DC_RD_RES |
+		IBV_EXP_DEVICE_ATTR_OOO_CAPS;
 	err = ibv_exp_query_device(ctx.ctx, &dattr);
 	if (err) {
 		printf("couldn't query device extended attributes\n");
@@ -456,6 +466,15 @@ int main(int argc, char *argv[])
 		if (!(dattr.comp_mask & IBV_EXP_DEVICE_DC_RD_RES)) {
 			printf("no report on max responder rdma/atomic resources\n");
 			return -1;
+		}
+
+		if (ctx.use_ooo) {
+			if (!(dattr.comp_mask & IBV_EXP_DEVICE_ATTR_OOO_CAPS) ||
+			    ((dattr.comp_mask & IBV_EXP_DEVICE_ATTR_OOO_CAPS) &&
+			     !(dattr.ooo_caps.dc_caps & IBV_EXP_OOO_SUPPORT_RW_DATA_PLACEMENT))) {
+				printf("Device doesn't support out of order processing\n");
+				return -1;
+			}
 		}
 	}
 
@@ -486,6 +505,12 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
+	if (ctx.gidx >= 0) {
+		if (ibv_query_gid(ctx.ctx, ctx.ib_port, ctx.gidx, &my_gid)) {
+			fprintf(stderr, "can't read sgid of index %d\n", ctx.gidx);
+			return 1;
+		}
+	}
 
 	{
 		struct ibv_srq_init_attr attr = {
@@ -522,8 +547,8 @@ int main(int argc, char *argv[])
 			.flow_label = 0,
 			.mtu = ctx.mtu,
 			.pkey_index = 0,
-			.gid_index = 0,
-			.hop_limit = 1,
+			.gid_index = (ctx.gidx >= 0) ? ctx.gidx : 0,
+			.hop_limit = 64,
 			.create_flags = 0,
 			.inline_size = ctx.inl,
 		};

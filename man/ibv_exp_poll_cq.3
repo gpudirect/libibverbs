@@ -32,7 +32,13 @@ uint64_t                wr_id;          /* ID of the completed Work Request (WR)
 enum ibv_wc_status      status;         /* Status of the operation */
 enum ibv_exp_wc_opcode  exp_opcode;     /* Operation type specified in the completed WR */
 uint32_t                vendor_err;     /* Vendor error syndrome */
-uint32_t                byte_len;       /* Number of bytes transferred */
+union {
+        uint32_t byte_len;      /* Number of bytes transferred */
+        struct {
+                uint16_t strides_offset;        /* Packet offset in strides from start of the WR's buffer */
+                uint16_t byte_len;              /* Packet size in bytes */
+        } mp_wr;                /* Should be used when WC is recieved on a MP WR */
+};
 uint32_t                imm_data;       /* Immediate data (in network byte order) */
 uint32_t                qp_num;         /* Local QP number of completed WR */
 uint32_t                src_qp;         /* Source QP number (remote QP number) of completed WR (valid only for UD QPs) */
@@ -72,12 +78,43 @@ It is either 0 or the bitwise OR of one or more of the following flags:
 .B IBV_EXP_WC_SRQ \fR SRQ pointer in WC is valid
 .TP
 .B IBV_EXP_WC_DCT\fR DCT pointer in WC is valid
+.TP
+.B IBV_EXP_WC_MP_WR_MORE_IN_MSG\fR is reported by a multi-packet WR that has more packet completions expected in this message for this qp_num.
+.TP
+.B IBV_EXP_WC_MP_WR_CONSUMED\fR is reported once the entire WR buffer of a multi-packet WR is consumed, so that user knows the device releases ownership of that wr_id buffer.
 .PP
 Not all
 .I wc
 attributes are always valid. If the completion status is other than
 .B IBV_WC_SUCCESS\fR,
 only the following attributes are valid: wr_id, status, qp_num, and vendor_err.
+
+.IP "Multi-Packet WR:"
+.B IBV_WC_MP_WR_MORE_IN_MSG\fR flag is reported by a multi-packet work
+request that has more packet completions expected in this message for
+this qp_num. This is set after receiving a FIRST or MIDDLE packet into
+the WR.
+.B IBV_WC_MP_WR_CONSUMED\fR flag is reported once an entire multi-packet
+work request buffer is consumed, so that user knows the device releases
+ownership of that wr_id's buffer. Note that this flag can be set also on
+WC with an error.
+.B IBV_WC_RECV_NOP\fR opcode is reported in WC for a 'consumed' WR that
+is without a received message.
+When a WC of a MP WR is received the user should use the struct mp_wr
+instead of uint32_t byte_len to get the packet location and size inside
+the buffer.
+When using the MP WR, multiple packets can be reported for each
+wr_id. In this case the wr_id which reflects the MP WR buffer submitted
+to the hardware by the application, can be repeated for multiple
+completions.
+It's the user's responsibility to reconstruct the full packet if it was
+segmented across multiple WC buffers, and across multiple WR buffers.
+
+Note: For a WC with IBV_EXP_WC_RECV_RDMA_WITH_IMM opcode, byte_len should
+be interpreted as 32 bits field which represents the RDMA scattered data
+size (And not as mp_wr struct).
+.PP
+
 .SH "RETURN VALUE"
 On success,
 .B ibv_exp_poll_cq()
@@ -102,4 +139,6 @@ Dotan Barak <dotanba@gmail.com>
 Moshe Lazer <moshel@mellanox.com>
 .TP
 Majd Dibbiny <majd@mellanox.com>
+.TP
+Guy Levi <guyle@mellanox.com>
 

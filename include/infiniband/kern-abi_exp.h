@@ -147,7 +147,8 @@ enum ibv_exp_create_qp_kernel_flags {
 					 IBV_EXP_QP_CREATE_ATOMIC_BE_REPLY |
 					 IBV_EXP_QP_CREATE_RX_END_PADDING |
 					 IBV_EXP_QP_CREATE_SCATTER_FCS |
-					 IBV_EXP_QP_CREATE_TUNNEL_OFFLOADS
+					 IBV_EXP_QP_CREATE_TUNNEL_OFFLOADS |
+					 IBV_EXP_QP_CREATE_PACKET_BASED_CREDIT_MODE
 };
 
 struct ibv_exp_create_qp {
@@ -291,6 +292,17 @@ struct ibv_exp_tm_caps_resp {
 	__u32 reserved;
 };
 
+struct ibv_exp_umr_fixed_size_caps_resp {
+	__u64 max_entity_size;
+};
+
+struct ibv_exp_pci_atomic_caps_resp {
+	__u16 fetch_add;
+	__u16 swap;
+	__u16 compare_swap;
+	__u16 reserved;
+};
+
 struct ibv_exp_query_device_resp {
 	__u64 comp_mask;
 	__u64 fw_ver;
@@ -368,6 +380,9 @@ struct ibv_exp_query_device_resp {
 	__u32    tunnel_offloads_caps;
 	__u32 tunneled_atomic_caps;
 	__u64 max_dm_size;
+	__u64 comp_mask_2;
+	struct ibv_exp_umr_fixed_size_caps_resp umr_fixed_size_caps;
+	struct ibv_exp_pci_atomic_caps_resp pci_atomic_caps;
 };
 
 struct ibv_exp_create_dct {

@@ -55,6 +55,7 @@ int ibv_exp_cmd_query_device(struct ibv_context *context,
 {
 	struct ibv_exp_query_device_resp resp;
 	struct ibv_query_device_resp *r_resp;
+	uint64_t comp_mask_2 = 0;
 	uint32_t comp_mask = 0;
 
 	memset(&resp, 0, sizeof(resp));
@@ -310,7 +311,29 @@ int ibv_exp_cmd_query_device(struct ibv_context *context,
 		comp_mask |= IBV_EXP_DEVICE_ATTR_TUNNELED_ATOMIC;
 	}
 
+	if ((device_attr->comp_mask & IBV_EXP_DEVICE_ATTR_COMP_MASK_2) &&
+	    (resp.comp_mask & IBV_EXP_DEVICE_ATTR_COMP_MASK_2)) {
+		comp_mask |= IBV_EXP_DEVICE_ATTR_COMP_MASK_2;
+		if ((device_attr->comp_mask_2 & IBV_EXP_DEVICE_ATTR_UMR_FIXED_SIZE_CAPS) &&
+		    (resp.comp_mask_2 & IBV_EXP_DEVICE_ATTR_UMR_FIXED_SIZE_CAPS)) {
+			device_attr->umr_fixed_size_caps.max_entity_size =
+				resp.umr_fixed_size_caps.max_entity_size;
+			comp_mask_2 |= IBV_EXP_DEVICE_ATTR_UMR_FIXED_SIZE_CAPS;
+		}
+
+		if ((device_attr->comp_mask_2 & IBV_EXP_DEVICE_ATTR_PCI_ATOMIC_CAPS) &&
+		    (resp.comp_mask_2 & IBV_EXP_DEVICE_ATTR_PCI_ATOMIC_CAPS)) {
+			device_attr->pci_atomic_caps.fetch_add = resp.pci_atomic_caps.fetch_add;
+			device_attr->pci_atomic_caps.swap = resp.pci_atomic_caps.swap;
+			device_attr->pci_atomic_caps.compare_swap = resp.pci_atomic_caps.compare_swap;
+			comp_mask_2 |= IBV_EXP_DEVICE_ATTR_PCI_ATOMIC_CAPS;
+		}
+	}
+
 	device_attr->comp_mask = comp_mask;
+
+	if (device_attr->comp_mask & IBV_EXP_DEVICE_ATTR_COMP_MASK_2)
+		device_attr->comp_mask_2 = comp_mask_2;
 
 	return 0;
 }

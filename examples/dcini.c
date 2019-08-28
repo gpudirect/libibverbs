@@ -172,7 +172,7 @@ static int to_rts(struct dc_ctx *ctx)
 
 	if (ctx->use_gid) {
 		attr.ah_attr.grh.sgid_index = ctx->gid_index;
-		attr.ah_attr.grh.hop_limit = 1;
+		attr.ah_attr.grh.hop_limit = 64;
 		attr.ah_attr.grh.dgid = ctx->dgid;
 	}
 
@@ -359,7 +359,7 @@ int main(int argc, char *argv[])
 	struct ibv_ah_attr	ah_attr;
 	struct dc_ctx		ctx = {
 		.ib_port	= 1,
-		.mtu		= IBV_MTU_2048,
+		.mtu		= IBV_MTU_1024,
 		.sl		= 0,
 	};
 	int ret;
@@ -596,7 +596,7 @@ int main(int argc, char *argv[])
 	ah_attr.port_num      = ctx.ib_port;
 	if (ctx.use_gid) {
 		ah_attr.is_global = 1;
-		ah_attr.grh.hop_limit = 1;
+		ah_attr.grh.hop_limit = 64;
 		ah_attr.grh.sgid_index = ctx.gid_index;
 		ah_attr.grh.dgid = ctx.dgid;
 	}
